@@ -607,7 +607,7 @@ td.t{font-weight:500;max-width:420px}
       <button class="tab" role="tab" data-act="view" data-v="list" aria-selected="false" data-for="staff">Liste</button>
       <button class="tab" role="tab" data-act="view" data-v="resolved" aria-selected="false" data-for="staff">Çözülenler</button>
       <button class="tab" role="tab" data-act="view" data-v="projects" aria-selected="false" data-for="staff">Projeler</button>
-      <button class="tab" role="tab" data-act="view" data-v="workflow" aria-selected="false" data-for="staff">İş akışı</button>
+      <button class="tab" role="tab" data-act="view" data-v="workflow" aria-selected="false" id="tab-wf" hidden>İş akışı</button>
       <button class="tab" role="tab" data-act="view" data-v="approvals" aria-selected="false" id="tab-appr" hidden>Onaylar <span class="badge" id="appr-badge"></span></button>
       <button class="tab" role="tab" data-act="view" data-v="admin" aria-selected="false" id="tab-admin" hidden>Yönetim</button>
     </nav>
@@ -1230,6 +1230,8 @@ function filtered(){
 
 function renderAll(){
   $("#tab-admin").hidden = !isAdmin();
+  $("#tab-wf").hidden = !isAdmin();
+  if(S.view === "workflow" && !isAdmin()) S.view = isRequester() ? "mine" : "inbox";
   document.querySelectorAll(".tab[data-for]").forEach(b => b.hidden = b.dataset.for === "staff" ? !isStaff() : !isRequester());
   if(S.view === "admin" && !isAdmin()) S.view = "board";
   const apr = isApprover();
