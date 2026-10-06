@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>TIMA · Platform yönetimi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#ECEEE9;--surface:#fff;--surface-2:#F4F5F2;--ink:#1E2422;--muted:#5F6763;--line:#D5D9D2;--line-2:#C3C8C0;--accent:#2B50D6;--accent-soft:#E3E9FC;--done:#2C8550;--done-soft:#DCEFE2;--danger:#C2412D;--danger-soft:#F8E1DC;--prog:#B97C06;--prog-soft:#F8ECD0;
+  --font:"Schibsted Grotesk","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.wrap{max-width:1080px;margin:0 auto;padding:24px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:.14em}
+.brand small{display:block;font-size:11px;letter-spacing:.02em;color:var(--muted);font-weight:600}
+.spacer{flex:1}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.panel h2{margin:0 0 4px;font-size:18px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 14px}
+.btn{border:1px solid var(--line-2);background:var(--surface);padding:7px 14px;border-radius:8px;font-weight:600}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{padding:4px 10px;font-size:13px}
+.btn.danger{color:var(--danger)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.inp{border:1px solid var(--line-2);background:var(--surface);border-radius:8px;padding:8px 11px;width:100%}
+.fld{display:flex;flex-direction:column;gap:5px;font-size:14px;margin-bottom:12px}
+.fld>span{font-weight:600}
+.hint{font-size:12.5px;color:var(--muted)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.err{color:var(--danger);font-size:13.5px;min-height:18px}
+.ok{color:var(--done);font-size:13.5px}
+.card{max-width:420px;margin:60px auto}
+.tabs{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px;width:max-content;margin-bottom:16px}
+.tab{border:0;background:transparent;padding:6px 14px;border-radius:7px;font-weight:600;color:var(--muted)}
+.tab[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
+th{font-size:12.5px;color:var(--muted);background:var(--surface-2)}
+tr:last-child td{border-bottom:0}
+.pill{display:inline-block;padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700}
+.pill.on{background:var(--done-soft);color:var(--done)} .pill.off{background:var(--danger-soft);color:var(--danger)}
+.pill.sent{background:var(--done-soft);color:var(--done)} .pill.error{background:var(--danger-soft);color:var(--danger)} .pill.skipped{background:var(--prog-soft);color:var(--prog)}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:-2px;margin-right:6px;border:1px solid var(--line)}
+dialog{border:1px solid var(--line);border-radius:14px;padding:0;width:min(620px,calc(100% - 24px));box-shadow:0 30px 60px -20px rgba(0,0,0,.45)}
+dialog::backdrop{background:rgba(15,20,18,.4)}
+.dh{padding:18px 22px 0} .dh h3{margin:0;font-size:18px}
+.db{padding:16px 22px;max-height:65vh;overflow:auto}
+.df{padding:14px 22px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:12px 14px 2px;margin:0 0 12px}
+legend{font-weight:700;font-size:13.5px;padding:0 6px}
+code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:13px}
+a{color:var(--accent)}
+@media (max-width:640px){.row2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#1E2422"/><rect x="7" y="9" width="8" height="6" rx="2" fill="#7D8581"/><rect x="16.5" y="9" width="8" height="6" rx="2" fill="#B97C06"/><rect x="26" y="9" width="7" height="6" rx="2" fill="#2C8550"/><rect x="16.5" y="17" width="8" height="15" rx="2.5" fill="#ECEEE9"/></svg>
+      <span>TIMA<small>Platform yönetimi</small></span></div>
+    <span class="spacer"></span>
+    <span id="who" class="hint"></span>
+    <button class="btn sm" id="logout" hidden>Çıkış yap</button>
+  </div>
+
+  <!-- ilk kurulum -->
+  <div class="panel card" id="setup" hidden>
+    <h2>İlk kurulum</h2>
+    <p class="sub">Platform yöneticisi hesabını oluştur. Bu ekran yalnızca bir kez görünür. Kurulum anahtarı, Cloudflare'de <code>SETUP_KEY</code> olarak girdiğin değerdir.</p>
+    <form id="setupForm">
+      <label class="fld"><span>Kurulum anahtarı (SETUP_KEY)</span><input class="inp" id="s-key" type="password" autocomplete="off" required></label>
+      <label class="fld"><span>Adın</span><input class="inp" id="s-name" required></label>
+      <label class="fld"><span>Kullanıcı adı</span><input class="inp" id="s-user" autocapitalize="off" spellcheck="false" placeholder="ör. serdar" required><span class="hint">Küçük harf, rakam, nokta, tire.</span></label>
+      <label class="fld"><span>Parola</span><input class="inp" id="s-pass" type="password" autocomplete="new-password" required><span class="hint">En az 8 karakter.</span></label>
+      <label class="fld"><span>Parola (tekrar)</span><input class="inp" id="s-pass2" type="password" autocomplete="new-password" required></label>
+      <div class="err" id="s-err"></div>
+      <button class="btn primary" type="submit">Hesabı oluştur</button>
+    </form>
+  </div>
+
+  <!-- giriş -->
+  <div class="panel card" id="login" hidden>
+    <h2>Platform girişi</h2>
+    <p class="sub">Bu panel yalnızca Umvion içindir. Firma kullanıcıları kendi adreslerinden (ör. <code>tima.umvion.com/umvion</code>) giriş yapar.</p>
+    <form id="loginForm">
+      <label class="fld"><span>Kullanıcı adı</span><input class="inp" id="l-user" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label class="fld"><span>Parola</span><input class="inp" id="l-pass" type="password" autocomplete="current-password" required></label>
+      <div class="err" id="l-err"></div>
+      <button class="btn primary" type="submit">Giriş yap</button>
+    </form>
+  </div>
+
+  <!-- ana panel -->
+  <div id="main" hidden>
+    <div class="tabs" role="tablist">
+      <button class="tab" data-tab="tenants" aria-selected="true">Firmalar</button>
+      <button class="tab" data-tab="mail" aria-selected="false">E-posta</button>
+      <button class="tab" data-tab="log" aria-selected="false">Gönderim kaydı</button>
+    </div>
+
+    <section class="panel" data-pane="tenants">
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div><h2>Firmalar</h2><p class="sub" style="margin:0">Her firma kendi adresinden giriş yapar ve verileri birbirinden tamamen ayrıdır.</p></div>
+        <span class="spacer"></span><button class="btn primary" id="newTenant">+ Yeni firma</button>
+      </div>
+      <div class="tw"><table><thead><tr><th>Firma</th><th>Giriş adresi</th><th>Durum</th><th>Kullanıcı</th><th>Çağrı (açık)</th><th>Gönderici</th><th></th></tr></thead><tbody id="tenantRows"></tbody></table></div>
+    </section>
+
+    <section class="panel" data-pane="mail" hidden>
+      <h2>Varsayılan gönderici</h2>
+      <p class="sub">Firmaya özel gönderici tanımlanmamışsa bildirimler bu adresten gider. Adres, Resend'de doğrulanmış bir alan adından olmalıdır (şu an <code>umvion.com</code>).</p>
+      <form id="mailForm" style="max-width:520px">
+        <label class="fld"><span>Gönderen adı</span><input class="inp" id="m-name" placeholder="Umvion Teknoloji"></label>
+        <label class="fld"><span>Gönderen adresi</span><input class="inp" id="m-email" type="email" placeholder="info@umvion.com" required></label>
+        <label class="fld"><span>Yanıt adresi (isteğe bağlı)</span><input class="inp" id="m-reply" type="email" placeholder="destek@umvion.com"><span class="hint">Kullanıcılar e-postayı yanıtladığında yanıt bu adrese gider.</span></label>
+        <div class="err" id="m-err"></div>
+        <button class="btn primary" type="submit">Kaydet</button>
+      </form>
+      <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+      <h2>Test e-postası</h2>
+      <p class="sub">Gönderimin çalıştığını kontrol et. Firma seçersen o firmanın gönderici ayarı kullanılır.</p>
+      <form id="testForm" style="max-width:520px">
+        <div class="row2">
+          <label class="fld"><span>Alıcı</span><input class="inp" id="t-to" type="email" placeholder="kendi@adresin.com" required></label>
+          <label class="fld"><span>Firma</span><select class="inp" id="t-tenant"><option value="">Platform varsayılanı</option></select></label>
+        </div>
+        <div id="t-res" class="hint"></div>
+        <button class="btn" type="submit">Test e-postası gönder</button>
+      </form>
+    </section>
+
+    <section class="panel" data-pane="log" hidden>
+      <div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:12px"><div><h2>Gönderim kaydı</h2><p class="sub" style="margin:0">Son 200 e-posta. “skipped”: günlük limit doldu, “error”: Resend reddetti (ayrıntı sütununa bak).</p></div><span class="spacer"></span><button class="btn sm" id="reloadLog">Yenile</button></div>
+      <div class="tw"><table><thead><tr><th>Zaman</th><th>Firma</th><th>Alıcı</th><th>Konu</th><th>Durum</th><th>Ayrıntı</th></tr></thead><tbody id="logRows"></tbody></table></div>
+    </section>
+  </div>
+</div>
+
+<!-- yeni firma -->
+<dialog id="dNew">
+  <form id="newForm" method="dialog">
+    <div class="dh"><h3>Yeni firma</h3></div>
+    <div class="db">
+      <div class="row2">
+        <label class="fld"><span>Firma adı</span><input class="inp" id="n-name" placeholder="Karaca Züccaciye" required></label>
+        <label class="fld"><span>Firma kodu (adres)</span><input class="inp" id="n-slug" placeholder="karaca" autocapitalize="off" spellcheck="false" required><span class="hint" id="n-url">tima.umvion.com/…</span></label>
+      </div>
+      <div class="row2">
+        <label class="fld"><span>Marka rengi</span><input class="inp" id="n-color" type="color" value="#2B50D6" style="height:40px;padding:4px"></label>
+        <label class="fld"><span>Kullanıcı limiti (isteğe bağlı)</span><input class="inp" id="n-limit" type="number" min="1" placeholder="Sınırsız"></label>
+      </div>
+      <fieldset><legend>İlk yönetici</legend>
+        <div class="row2">
+          <label class="fld"><span>Ad soyad</span><input class="inp" id="n-aname" required></label>
+          <label class="fld"><span>Kullanıcı adı</span><input class="inp" id="n-auser" autocapitalize="off" spellcheck="false" required></label>
+        </div>
+        <label class="fld"><span>E-posta</span><input class="inp" id="n-amail" type="email" required><span class="hint">Parola belirleme bağlantısı bu adrese gönderilir.</span></label>
+      </fieldset>
+      <fieldset><legend>Başlangıç ayarları</legend>
+        <label class="fld" style="flex-direction:row;gap:8px;align-items:center;font-weight:500"><input type="radio" name="n-set" value="default" checked> Varsayılan ayarlar (kategoriler boş başlar)</label>
+        <label class="fld" style="flex-direction:row;gap:8px;align-items:center;font-weight:500"><input type="radio" name="n-set" value="file"> Ayar dosyası yükle (<code>tima-ayarlar.json</code>)</label>
+        <input type="file" id="n-file" accept=".json,application/json" hidden>
+        <div class="hint" id="n-fileinfo"></div>
+      </fieldset>
+      <div class="err" id="n-err"></div>
+    </div>
+    <div class="df"><button class="btn" value="cancel" formnovalidate>Vazgeç</button><button class="btn primary" id="n-save" value="default">Firmayı oluştur</button></div>
+  </form>
+</dialog>
+
+<!-- firma düzenle -->
+<dialog id="dEdit">
+  <form id="editForm" method="dialog">
+    <div class="dh"><h3 id="e-title">Firma</h3></div>
+    <div class="db">
+      <div class="row2">
+        <label class="fld"><span>Firma adı</span><input class="inp" id="e-name" required></label>
+        <label class="fld"><span>Durum</span><select class="inp" id="e-active"><option value="1">Aktif</option><option value="0">Askıda (giriş kapalı)</option></select></label>
+      </div>
+      <div class="row2">
+        <label class="fld"><span>Marka rengi</span><input class="inp" id="e-color" type="color" style="height:40px;padding:4px"></label>
+        <label class="fld"><span>Kullanıcı limiti</span><input class="inp" id="e-limit" type="number" min="1" placeholder="Sınırsız"></label>
+      </div>
+      <fieldset><legend>E-posta göndericisi</legend>
+        <p class="hint" style="margin:0 0 10px">Boş bırakılan alanlarda platform varsayılanı kullanılır. Gönderen adresi Resend'de doğrulanmış bir alan adından olmalı; firmanın kendi alan adını doğrulatana kadar adresi boş bırakıp yalnızca gönderen adını ve yanıt adresini değiştir.</p>
+        <label class="fld"><span>Gönderen adı</span><input class="inp" id="e-mname" placeholder="ör. Karaca Destek"></label>
+        <div class="row2">
+          <label class="fld"><span>Gönderen adresi</span><input class="inp" id="e-mfrom" type="email" placeholder="Varsayılan"></label>
+          <label class="fld"><span>Yanıt adresi</span><input class="inp" id="e-mreply" type="email" placeholder="ör. destek@karaca.com.tr"></label>
+        </div>
+      </fieldset>
+      <fieldset><legend>Yönetici ekle</legend>
+        <p class="hint" style="margin:0 0 10px">Firmanın yöneticisi kilitlenirse ya da yeni yönetici gerekirse buradan eklenir.</p>
+        <div class="row2">
+          <label class="fld"><span>Ad soyad</span><input class="inp" id="e-aname"></label>
+          <label class="fld"><span>Kullanıcı adı</span><input class="inp" id="e-auser" autocapitalize="off" spellcheck="false"></label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end"><label class="fld" style="flex:1"><span>E-posta</span><input class="inp" id="e-amail" type="email"></label><button type="button" class="btn" id="e-addadmin" style="margin-bottom:12px">Ekle ve davet gönder</button></div>
+      </fieldset>
+      <div class="err" id="e-err"></div>
+    </div>
+    <div class="df"><button class="btn" value="cancel" formnovalidate>Kapat</button><button class="btn primary" id="e-save" value="default">Kaydet</button></div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+"use strict";
+const API = (localStorage.getItem("tima-api") || "https://tima-api.serdox.workers.dev/api").replace(/\/$/, "") + "/_platform";
+const TK = "tima-platform-token";
+let token = localStorage.getItem(TK), tenants = [], editing = null, newSettings = null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const SITE = location.origin;
+
+async function api(method, path, body){
+  const h = {}; if(token) h.Authorization = "Bearer " + token;
+  const o = {method, headers:h}; if(body !== undefined){ h["Content-Type"] = "application/json"; o.body = JSON.stringify(body); }
+  let r; try{ r = await fetch(API + path, o); }catch(e){ throw new Error("Sunucuya ulaşılamadı. Worker adresini ve internet bağlantını kontrol et."); }
+  let j = null; try{ j = await r.json(); }catch(e){}
+  if(r.status === 401 && path !== "/login"){ setToken(null); show("login"); }
+  if(!r.ok) throw new Error((j && j.message) || "İşlem yapılamadı.");
+  return j || {};
+}
+function setToken(t){ token = t; t ? localStorage.setItem(TK, t) : localStorage.removeItem(TK); }
+function show(which){
+  ["setup","login","main"].forEach(id => $("#" + id).hidden = id !== which);
+  $("#logout").hidden = which !== "main";
+}
+
+async function start(){
+  try{
+    const st = await api("GET", "/status");
+    if(!st.setupDone){ show("setup"); return; }
+    if(token){ show("main"); await loadAll(); } else show("login");
+  }catch(e){ show("login"); $("#l-err").textContent = e.message; }
+}
+
+$("#setupForm").addEventListener("submit", async e => {
+  e.preventDefault(); const err = $("#s-err"); err.textContent = "";
+  if($("#s-pass").value.length < 8) return err.textContent = "Parola en az 8 karakter olmalı.";
+  if($("#s-pass").value !== $("#s-pass2").value) return err.textContent = "Parolalar eşleşmiyor.";
+  try{
+    const r = await api("POST", "/setup", {setupKey:$("#s-key").value.trim(), name:$("#s-name").value.trim(), username:$("#s-user").value.trim().toLowerCase(), password:$("#s-pass").value});
+    setToken(r.token); show("main"); await loadAll();
+  }catch(ex){ err.textContent = ex.message; }
+});
+$("#loginForm").addEventListener("submit", async e => {
+  e.preventDefault(); const err = $("#l-err"); err.textContent = "";
+  try{
+    const r = await api("POST", "/login", {username:$("#l-user").value.trim().toLowerCase(), password:$("#l-pass").value});
+    setToken(r.token); show("main"); await loadAll();
+  }catch(ex){ err.textContent = ex.message; }
+});
+$("#logout").addEventListener("click", () => { setToken(null); show("login"); });
+
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+  document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== b.dataset.tab);
+  if(b.dataset.tab === "log") loadLog();
+}));
+
+async function loadAll(){ await Promise.all([loadTenants(), loadMail()]); }
+async function loadTenants(){
+  const r = await api("GET", "/tenants"); tenants = r.tenants;
+  $("#tenantRows").innerHTML = tenants.length ? tenants.map(t => `<tr>
+    <td><span class="sw" style="background:${esc(t.color || "#2B50D6")}"></span><b>${esc(t.name)}</b></td>
+    <td><a href="${SITE}/${esc(t.slug)}" target="_blank" rel="noopener">${esc(location.host)}/${esc(t.slug)}</a></td>
+    <td><span class="pill ${t.active ? "on" : "off"}">${t.active ? "Aktif" : "Askıda"}</span></td>
+    <td>${t.users}${t.userLimit ? ` / ${t.userLimit}` : ""}</td>
+    <td>${t.tickets} (${t.openTickets})</td>
+    <td class="hint">${esc((t.mail && (t.mail.fromName || t.mail.fromEmail)) || "Varsayılan")}</td>
+    <td style="text-align:right"><button class="btn sm" data-edit="${esc(t.slug)}">Düzenle</button></td></tr>`).join("")
+    : `<tr><td colspan="7" class="hint">Henüz firma yok. “Yeni firma” ile başla.</td></tr>`;
+  $("#t-tenant").innerHTML = `<option value="">Platform varsayılanı</option>` + tenants.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join("");
+}
+async function loadMail(){
+  const r = await api("GET", "/settings");
+  $("#m-name").value = r.mail.fromName || ""; $("#m-email").value = r.mail.fromEmail || ""; $("#m-reply").value = r.mail.replyTo || "";
+}
+async function loadLog(){
+  const r = await api("GET", "/mail-log");
+  $("#logRows").innerHTML = r.log.length ? r.log.map(l => `<tr><td class="hint" style="white-space:nowrap">${new Date(l.at).toLocaleString("tr-TR")}</td><td>${esc(l.tenant || "—")}</td><td>${esc(l.to_addr)}</td><td>${esc(l.subject)}</td><td><span class="pill ${esc(l.status)}">${esc(l.status)}</span></td><td class="hint" style="max-width:280px;word-break:break-word">${esc(l.status === "sent" ? "" : l.detail || "")}</td></tr>`).join("")
+    : `<tr><td colspan="6" class="hint">Henüz gönderim yok.</td></tr>`;
+}
+$("#reloadLog").addEventListener("click", loadLog);
+
+$("#mailForm").addEventListener("submit", async e => {
+  e.preventDefault(); const err = $("#m-err"); err.textContent = "";
+  try{ await api("PUT", "/settings", {mail:{fromName:$("#m-name").value.trim(), fromEmail:$("#m-email").value.trim(), replyTo:$("#m-reply").value.trim()}}); err.className = "ok"; err.textContent = "Kaydedildi."; }
+  catch(ex){ err.className = "err"; err.textContent = ex.message; }
+});
+$("#testForm").addEventListener("submit", async e => {
+  e.preventDefault(); const res = $("#t-res"); res.textContent = "Gönderiliyor…";
+  try{
+    const r = await api("POST", "/test-mail", {to:$("#t-to").value.trim(), tenant:$("#t-tenant").value || null});
+    res.innerHTML = r.ok ? `<span class="ok">Gönderildi. Gelen kutunu (ve gereksiz klasörünü) kontrol et; Resend &gt; Emails sayfasında da görünür.</span>`
+      : `<span class="err">Gönderilemedi: ${esc(r.log && r.log.detail || "bilinmeyen hata")}</span>`;
+  }catch(ex){ res.innerHTML = `<span class="err">${esc(ex.message)}</span>`; }
+});
+
+/* yeni firma */
+$("#newTenant").addEventListener("click", () => { $("#newForm").reset(); newSettings = null; $("#n-fileinfo").textContent = ""; $("#n-err").textContent = ""; updUrl(); $("#dNew").showModal(); });
+const updUrl = () => $("#n-url").textContent = `${location.host}/${$("#n-slug").value.trim().toLowerCase() || "…"}`;
+$("#n-slug").addEventListener("input", updUrl);
+$("#n-name").addEventListener("input", () => {
+  if($("#n-slug").dataset.touched) return;
+  const map = {"ç":"c","ğ":"g","ı":"i","ö":"o","ş":"s","ü":"u"};
+  $("#n-slug").value = $("#n-name").value.toLocaleLowerCase("tr-TR").replace(/[çğıöşü]/g, c => map[c]).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").split("-")[0] || "";
+  updUrl();
+});
+$("#n-slug").addEventListener("keydown", () => $("#n-slug").dataset.touched = "1");
+document.querySelectorAll('input[name="n-set"]').forEach(r => r.addEventListener("change", () => { if(r.value === "file" && r.checked) $("#n-file").click(); }));
+$("#n-file").addEventListener("change", async () => {
+  const f = $("#n-file").files[0]; if(!f) return;
+  try{ newSettings = JSON.parse(await f.text()); $("#n-fileinfo").textContent = `${f.name} · ${(newSettings.categories || []).length} kategori, ${(newSettings.workflow?.statuses || []).length} durum`; }
+  catch(e){ newSettings = null; $("#n-fileinfo").textContent = "Dosya okunamadı: geçerli bir JSON değil."; }
+});
+$("#n-save").addEventListener("click", async e => {
+  e.preventDefault(); const err = $("#n-err"); err.textContent = "";
+  if(!$("#newForm").reportValidity()) return;
+  const useFile = document.querySelector('input[name="n-set"]:checked').value === "file";
+  if(useFile && !newSettings) return err.textContent = "Ayar dosyasını seç ya da varsayılan ayarları kullan.";
+  e.target.disabled = true;
+  try{
+    const r = await api("POST", "/tenants", {slug:$("#n-slug").value.trim().toLowerCase(), name:$("#n-name").value.trim(), color:$("#n-color").value, userLimit:+$("#n-limit").value || null,
+      settings: useFile ? newSettings : null, admin:{name:$("#n-aname").value.trim(), username:$("#n-auser").value.trim().toLowerCase(), email:$("#n-amail").value.trim()}});
+    $("#dNew").close(); await loadTenants();
+    alert(`Firma oluşturuldu.\n\nGiriş adresi: ${SITE}/${r.slug}\nYönetici: ${r.admin?.user?.username}\n${r.admin?.invited ? "Parola belirleme bağlantısı e-postayla gönderildi." : ""}`);
+  }catch(ex){ err.textContent = ex.message; }
+  finally{ e.target.disabled = false; }
+});
+
+/* firma düzenle */
+$("#tenantRows").addEventListener("click", e => {
+  const b = e.target.closest("[data-edit]"); if(!b) return;
+  const t = tenants.find(x => x.slug === b.dataset.edit); editing = t;
+  $("#e-title").textContent = `${t.name} · /${t.slug}`;
+  $("#e-name").value = t.name; $("#e-active").value = t.active ? "1" : "0"; $("#e-color").value = t.color || "#2B50D6"; $("#e-limit").value = t.userLimit || "";
+  $("#e-mname").value = t.mail?.fromName || ""; $("#e-mfrom").value = t.mail?.fromEmail || ""; $("#e-mreply").value = t.mail?.replyTo || "";
+  ["e-aname","e-auser","e-amail"].forEach(id => $("#" + id).value = ""); $("#e-err").textContent = "";
+  $("#dEdit").showModal();
+});
+$("#e-save").addEventListener("click", async e => {
+  e.preventDefault(); const err = $("#e-err"); err.textContent = "";
+  try{
+    await api("PATCH", `/tenants/${editing.slug}`, {name:$("#e-name").value.trim(), active:$("#e-active").value === "1", color:$("#e-color").value, userLimit:+$("#e-limit").value || null,
+      mail:{fromName:$("#e-mname").value.trim(), fromEmail:$("#e-mfrom").value.trim(), replyTo:$("#e-mreply").value.trim()}});
+    $("#dEdit").close(); await loadTenants();
+  }catch(ex){ err.textContent = ex.message; }
+});
+$("#e-addadmin").addEventListener("click", async () => {
+  const err = $("#e-err"); err.textContent = "";
+  try{
+    const r = await api("POST", `/tenants/${editing.slug}/admin`, {name:$("#e-aname").value.trim(), username:$("#e-auser").value.trim().toLowerCase(), email:$("#e-amail").value.trim()});
+    err.className = "ok"; err.textContent = `${r.user.username} eklendi${r.invited ? ", davet gönderildi" : ""}.`; await loadTenants();
+  }catch(ex){ err.className = "err"; err.textContent = ex.message; }
+});
+start();
+})();
+</script>
+</body>
+</html>
