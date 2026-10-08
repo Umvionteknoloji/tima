@@ -70,6 +70,9 @@ button{cursor:pointer}
 .steps span{font-size:12px;font-weight:600;padding:3px 8px;border-radius:5px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
 .steps span.cur{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .steps span.past{color:var(--ink)}
+.xl-acts{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.xl-acts a.hintline{color:var(--accent);text-decoration:none;font-weight:600}
+.xl-acts a.hintline:hover{text-decoration:underline}
 .cat-add{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .cat-add .inp{flex:1;min-width:200px}
 .cat-row{display:grid;grid-template-columns:minmax(160px,1fr) 110px 110px auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
@@ -1909,7 +1912,15 @@ function renderAdmin(){
   }).join("");
   return `<div class="adm"><section class="panel">
     <div class="adm-h"><div><h2>Kullanıcılar</h2><p class="sub" style="margin:4px 0 0">TIMA'ya giriş yapabilecek kişileri buradan ekle. Destek ekibini <b>Destek personeli</b>, talep açacak çalışanları <b>Talep sahibi</b> rolüne ata.</p></div>
-      <span class="spacer"></span><button class="btn" data-act="u-import" ${ro}>Excel'den içe aktar</button><button class="btn primary" data-act="u-add" ${ro}>+ Kullanıcı ekle</button></div>
+      <span class="spacer"></span>
+      <div class="xl-acts">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn" data-act="u-export" title="Tüm kullanıcıları şablonla aynı sütunlarda Excel dosyası olarak indir">Excel'e aktar</button>
+          <button class="btn" data-act="u-import" ${ro}>Excel'den içe aktar</button>
+          <button class="btn primary" data-act="u-add" ${ro}>+ Kullanıcı ekle</button>
+        </div>
+        <a class="hintline" href="/TIMA_kullanici_aktarim_sablonu.xlsx" download>Örnek şablonu indir (.xlsx)</a>
+      </div></div>
     <div class="adm-stats"><span><b>${accts.length}</b>hesap</span><span><b>${active}</b>aktif</span><span><b>${byRole("admin")}</b>yönetici</span><span><b>${byRole("agent")}</b>destek personeli</span><span><b>${byRole("requester")}</b>talep sahibi</span></div>
     <div class="tablewrap" style="margin-top:10px"><table>
       <thead><tr><th>Kullanıcı</th><th>Rol</th><th>Grup / havuz</th><th>Durum</th><th>Açtığı</th><th>Üstlendiği</th><th>Eklendi</th><th class="acts"><span class="sr">İşlemler</span></th></tr></thead>
@@ -2444,7 +2455,7 @@ function renderDialog(force = true){
   } else if(dlg.kind === "import"){
     html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(620px,calc(100% - 24px))">
-      <div class="dl-h"><h3 id="dlgt">Excel'den kullanıcı aktar</h3><p class="dl-sub">TIMA kullanıcı aktarım şablonunu kullan. Dosyadaki “Kullanıcılar” sayfası okunur; parola yazılmaz, her kullanıcıya e-postayla parola belirleme bağlantısı gider.</p></div>
+      <div class="dl-h"><h3 id="dlgt">Excel'den kullanıcı aktar</h3><p class="dl-sub">TIMA kullanıcı aktarım şablonunu kullan (<a href="/TIMA_kullanici_aktarim_sablonu.xlsx" download>örnek şablonu indir</a>). Dosyadaki “Kullanıcılar” sayfası okunur; parola yazılmaz, her kullanıcıya e-postayla parola belirleme bağlantısı gider. Sistemde zaten olan kişiler hatalı satır olarak listelenir; “hatalı satırları atla” ile yalnızca yeniler aktarılır.</p></div>
       <div class="dl-b">
         ${dlg.stage === "pick" ? `<label class="btn" style="cursor:pointer;align-self:flex-start">Excel dosyası seç<input type="file" accept=".xlsx,.xls" id="imp-file" class="sr"></label>
           ${dlg.loading ? `<p class="hintline">Dosya okunuyor…</p>` : ""}` : ""}
@@ -2794,6 +2805,7 @@ document.addEventListener("click", async e => {
     case "u-invite": { const u = S.users[id]; if(!u) return;
       api("POST", `/users/${id}/invite`, {}).then(() => toast(`${u.email} adresine bağlantı gönderildi`)).catch(apiFail); break; }
     case "u-import": openImport(); break;
+    case "u-export": exportUsers().catch(e => toast(e.message, true)); break;
     case "imp-run": runImport(false); break;
     case "imp-skip": runImport(true); break;
     case "u-save": {
@@ -3158,6 +3170,30 @@ document.querySelectorAll("[data-logo]").forEach(el => el.outerHTML = logoSVG(+e
 function loadXlsx(){
   if(window.XLSX) return Promise.resolve();
   return new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; sc.onload = res; sc.onerror = () => rej(new Error("Excel okuyucu yüklenemedi.")); document.head.appendChild(sc); });
+}
+async function exportUsers(){
+  if(!isAdmin()) return;
+  await loadXlsx();
+  const roleL = {requester:"Talep sahibi", agent:"Destek personeli", admin:"Yönetici"};
+  const groupL = {center:"Merkez kullanıcısı", store:"Mağaza kullanıcısı", regional:"Bölge müdürü"};
+  const poolL = p => { const a = (p && p.length ? p : ["center","store"]); return a.includes("center") && a.includes("store") ? "Merkez + Mağaza" : a.includes("store") ? "Mağaza" : "Merkez"; };
+  const head = ["Ad Soyad *","Kullanıcı adı *","E-posta *","Rol *","Grup (talep sahibi)","Mağaza / birim / bölge","Onaylayıcı (kullanıcı adı)","Destek havuzları (destek personeli)","Aktif","Parola belirlendi","Açtığı talep","Eklenme tarihi"];
+  const opened = {}; Object.values(S.tickets).forEach(t => { opened[t.reporter] = (opened[t.reporter] || 0) + 1; });
+  const rows = allAccounts().map(u => {
+    const r = normRole(u.role), ap = u.approver && account(u.approver.slice(2));
+    return [u.name, u.username, u.email || "", roleL[r], r === "requester" ? groupL[userGroup(u)] : "", u.location || "", r === "requester" && ap ? ap.username : "",
+      r === "agent" ? poolL(u.pools) : "", u.active === false ? "Hayır" : "Evet", u.hasPassword === false ? "Hayır" : "Evet", opened["a:" + u.id] || 0,
+      u.createdAt ? new Date(u.createdAt).toLocaleDateString("tr-TR") : ""];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
+  ws["!cols"] = [24,20,30,18,21,24,24,22,9,14,12,14].map(w => ({wch:w}));
+  ws["!autofilter"] = {ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:rows.length, c:head.length - 1}})};
+  ws["!freeze"] = {xSplit:1, ySplit:1};
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Kullanıcılar");
+  const d = new Date(), stamp = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  XLSX.writeFile(wb, `TIMA_kullanicilar_${SLUG}_${stamp}.xlsx`);
+  toast(`${rows.length} kullanıcı Excel'e aktarıldı`);
 }
 function openImport(){ dlg = {kind:"import", stage:"pick", invite:true}; renderDialog(); }
 async function readImportFile(file){
