@@ -56,7 +56,13 @@ button{cursor:pointer}
 .logo .lg-stem{fill:var(--bg)}
 .wordmark{font-weight:800;font-size:20px;letter-spacing:.14em;line-height:1}
 .wordmark small{display:block;font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--muted);margin-top:3px}
-.userchip{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600}
+.userchip{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;border:1px solid transparent;background:transparent;border-radius:9px;padding:4px 8px}
+.userchip:hover{background:var(--surface-2);border-color:var(--line)}
+.menu .mh{padding:8px 10px 6px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line);margin-bottom:4px}
+.menu .mh b{display:block;color:var(--ink);font-size:14px}
+.menu .ms{font-size:11.5px;font-weight:700;color:var(--muted);padding:8px 10px 2px;text-transform:uppercase;letter-spacing:.04em}
+.menu .opt .cur{margin-left:auto;color:var(--accent);font-weight:800}
+.sharedtag{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:1px}
 
 .badge{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;margin-left:4px;font-variant-numeric:tabular-nums}
 .badge:empty{display:none}
@@ -617,7 +623,7 @@ td.t{font-weight:500;max-width:420px}
     <div class="spacer"></div>
     <span class="mode local" id="mode"><i></i>Bu tarayıcıda saklanıyor</span>
     <button class="btn primary" data-act="create">+ Talep oluştur</button>
-    <span class="userchip" id="userchip"></span>
+    <button class="userchip" id="userchip" data-act="me-menu" aria-haspopup="menu" title="Hesap"></button>
     <button class="btn sm ghost" data-act="logout">Çıkış yap</button>
   </div>
 </header>
@@ -1880,7 +1886,7 @@ function renderList(){
 function renderUserChip(){
   const c = $("#userchip"); if(!c) return;
   if(!S.session){ c.innerHTML = ""; return; }
-  c.innerHTML = `${avatar(meRef(),26)}<span>${esc(personName(meRef()))}</span><span class="role ${S.session.role}">${ROLES[S.session.role].label}</span>`;
+  c.innerHTML = `${avatar(meRef(),26)}<span>${esc(personName(meRef()))}</span><span class="role ${S.session.role}">${ROLES[S.session.role].label}</span>${(S.myTenants||[]).length > 1 ? `<span class="vis" style="font-size:12px">· ${esc(S.tenant ? S.tenant.name : "")} ▾</span>` : `<span class="vis">▾</span>`}`;
 }
 function renderAdmin(){
   const accts = allAccounts();
@@ -1895,7 +1901,7 @@ function renderAdmin(){
   const rows = accts.map(u => {
     const ref = "a:" + u.id, self = S.session && S.session.id === u.id;
     return `<tr class="${u.active ? "" : "inactive"}">
-      <td><span style="display:inline-flex;gap:10px;align-items:center">${avatar(ref,30)}<span><b style="font-weight:600">${esc(u.name)}</b>${self ? ` <span class="uname">(sen)</span>` : ""}<br><span class="uname">${esc(u.username)}${u.email ? " · " + esc(u.email) : ` · <span style="color:var(--danger)">e-posta yok</span>`}${u.hasPassword === false ? ` · <span style="color:var(--prog)">parola belirlenmedi</span>` : ""}</span></span></span></td>
+      <td><span style="display:inline-flex;gap:10px;align-items:center">${avatar(ref,30)}<span><b style="font-weight:600">${esc(u.name)}</b>${u.shared ? `<span class="sharedtag" title="Birden fazla firmada aynı kullanıcı adı ve parolayla çalışıyor">Ortak hesap</span>` : ""}${self ? ` <span class="uname">(sen)</span>` : ""}<br><span class="uname">${esc(u.username)}${u.email ? " · " + esc(u.email) : ` · <span style="color:var(--danger)">e-posta yok</span>`}${u.hasPassword === false ? ` · <span style="color:var(--prog)">parola belirlenmedi</span>` : ""}</span></span></span></td>
       <td><span class="role ${normRole(u.role)}">${ROLES[normRole(u.role)].label}</span></td>
       <td class="who" style="font-size:13.5px">${normRole(u.role) === "requester" ? `${esc(GROUPS[userGroup(u)].label)}${u.location ? `<small>${esc(u.location)}</small>` : ""}<small>Onaylayıcı: ${esc(personName(approverFor(u)))}${validApprover(u.approver) ? "" : " (varsayılan)"}</small>`
         : normRole(u.role) === "agent" ? `<span style="display:inline-flex;gap:4px;flex-wrap:wrap">${agentPools(u).map(poolTag).join("")}</span>` : `<span class="vis">Tüm havuzlar</span>`}</td>
@@ -2413,7 +2419,7 @@ function renderDialog(force = true){
       <div class="dl-h"><h3 id="dlgt">${edit ? "Kullanıcıyı düzenle" : "Kullanıcı ekle"}</h3><p class="dl-sub">${edit ? esc(dlg.username) : "Kişi bu kullanıcı adı ve parolayla giriş yapacak."}</p></div>
       <div class="dl-b">
         <label class="fld"><span>Ad soyad <span class="req">*</span></span><input class="inp" id="u-name" value="${esc(dlg.name)}" placeholder="Örn. Ayşe Yılmaz" autocomplete="off"></label>
-        <label class="fld"><span>E-posta</span><input class="inp" id="u-email" type="email" value="${esc(dlg.email || "")}" placeholder="ayse.yilmaz@firma.com.tr" autocomplete="off"><small class="hintline">Bildirimler ve parola bağlantısı bu adrese gider.</small></label>
+        <label class="fld"><span>E-posta</span><input class="inp" id="u-email" type="email" value="${esc(dlg.email || "")}" placeholder="ayse.yilmaz@firma.com.tr" autocomplete="off" ${dlg.shared ? "disabled" : ""}><small class="hintline">${dlg.shared ? "Ortak hesap: e-posta ve parolayı yalnızca kişinin kendisi değiştirebilir." : "Bildirimler ve parola bağlantısı bu adrese gider. Destek personeli başka bir firmada aynı kullanıcı adı ve e-postayla kayıtlıysa yeni hesap açılmaz, mevcut hesabı bu firmaya bağlanır."}</small></label>
         ${edit ? "" : `<label class="fld"><span>Kullanıcı adı <span class="req">*</span></span><input class="inp" id="u-username" value="${esc(dlg.username)}" placeholder="ayse.yilmaz" autocapitalize="off" spellcheck="false" autocomplete="off"><small class="hintline">Küçük harf, rakam, nokta, tire veya alt çizgi. Sonradan değiştirilemez.</small></label>`}
         <label class="fld"><span>Rol</span><select class="inp" id="u-role">
           ${["requester","agent","admin"].map(r => `<option value="${r}" ${dlg.role===r?"selected":""}>${ROLES[r].label}</option>`).join("")}</select>
@@ -2433,10 +2439,10 @@ function renderDialog(force = true){
             })()}</select><small class="hintline">Onaya tabi talep tiplerinde bu kişinin onayı istenir.</small></label>` : ""}
         ${dlg.role === "agent" ? `<div class="fld"><span>Çalıştığı havuzlar <span class="req">*</span></span><div class="poolchk">${Object.entries(POOLS).map(([k,P]) => `<label class="chk" style="color:var(--ink)"><input type="checkbox" id="u-pool-${k}" ${dlg.pools.includes(k)?"checked":""}> ${P.label} havuzu</label>`).join("")}</div>
           <small class="hintline">Personel yalnızca seçili havuzlara düşen çağrıları görür ve üstlenebilir.</small></div>` : ""}
-        <div class="fld"><span>${edit ? "Yeni parola" : "Parola"} <span style="color:var(--muted);font-weight:400">${edit ? "(değiştirmeyeceksen boş bırak)" : "(boş bırakırsan kullanıcıya e-postayla parola belirleme bağlantısı gider)"}</span></span>
+        ${dlg.shared ? "" : `<div class="fld"><span>${edit ? "Yeni parola" : "Parola"} <span style="color:var(--muted);font-weight:400">${edit ? "(değiştirmeyeceksen boş bırak)" : "(boş bırakırsan kullanıcıya e-postayla parola belirleme bağlantısı gider)"}</span></span>
           <div class="genrow"><input class="inp" id="u-pass" type="${dlg.showPw ? "text" : "password"}" value="${esc(dlg.password)}" autocomplete="new-password"><button type="button" class="btn sm" data-act="u-gen">Parola üret</button></div>
           <small class="hintline">En az 8 karakter.</small></div>
-        <label class="fld"><span>Parola tekrar</span><input class="inp" id="u-pass2" type="${dlg.showPw ? "text" : "password"}" value="${esc(dlg.password2)}" autocomplete="new-password"></label>
+        <label class="fld"><span>Parola tekrar</span><input class="inp" id="u-pass2" type="${dlg.showPw ? "text" : "password"}" value="${esc(dlg.password2)}" autocomplete="new-password"></label>`}
         ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
       </div>
       <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="u-save">${edit ? "Değişiklikleri kaydet" : "Kullanıcıyı ekle"}</button></div>
@@ -2451,6 +2457,18 @@ function renderDialog(force = true){
       <div class="lb-bar"><span class="att-n">${esc(at.name)}</span><span class="vis" style="color:#c9cfcb">${i+1}/${imgs.length}</span><span class="spacer"></span>
         ${imgs.length > 1 ? `<button class="btn sm" data-act="lb-nav" data-d="-1" aria-label="Önceki">‹</button><button class="btn sm" data-act="lb-nav" data-d="1" aria-label="Sonraki">›</button>` : ""}
         <a class="btn sm" href="/_blob/${at.id}" target="_blank" rel="noopener">Yeni sekmede aç</a><button class="btn sm" data-act="dlg-cancel">Kapat</button></div>
+    </div>`;
+  } else if(dlg.kind === "pwchange"){
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(420px,calc(100% - 24px))">
+      <div class="dl-h"><h3 id="dlgt">Parolamı değiştir</h3>${(S.myTenants||[]).length > 1 ? `<p class="dl-sub">Bu hesap ${S.myTenants.length} firmada ortak kullanılıyor; yeni parola hepsinde geçerli olur.</p>` : ""}</div>
+      <div class="dl-b">
+        <label class="fld"><span>Mevcut parola</span><input class="inp" id="pwc-cur" type="password" autocomplete="current-password"></label>
+        <label class="fld"><span>Yeni parola</span><input class="inp" id="pwc-1" type="password" autocomplete="new-password"><small class="hintline">En az 8 karakter.</small></label>
+        <label class="fld"><span>Yeni parola (tekrar)</span><input class="inp" id="pwc-2" type="password" autocomplete="new-password"></label>
+        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
+      </div>
+      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="pwc-save">Parolayı değiştir</button></div>
     </div>`;
   } else if(dlg.kind === "import"){
     html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
@@ -2542,7 +2560,7 @@ function renderDialog(force = true){
   if(guardedSet(w, html, force)){
     const keep = focusedId && w.querySelector("#"+focusedId);
     if(keep) keep.focus();
-    else if(!dlg.focused){ const f = w.querySelector("#c-title, #u-name, #ap-note, #pj-name, #tk-title, #d-cmt, .dl-f .btn.primary"); if(f) f.focus(); }
+    else if(!dlg.focused){ const f = w.querySelector("#c-title, #u-name, #pwc-cur, #ap-note, #pj-name, #tk-title, #d-cmt, .dl-f .btn.primary"); if(f) f.focus(); }
     dlg.focused = true;
   }
 }
@@ -2636,7 +2654,7 @@ document.addEventListener("click", async e => {
   const t = id ? S.tickets[id] : null;
   switch(a){
     case "view": S.view = el.dataset.v; renderAll(); break;
-    case "logout": { const t0 = TOKEN; setToken(null); lock(); if(t0) fetch(API_BASE + "/" + SLUG + "/logout", {method:"POST", headers:{Authorization:"Bearer " + t0}}).catch(() => {}); break; }
+    case "logout": { $("#poplayer").innerHTML = ""; const t0 = TOKEN; setToken(null); lock(); if(t0) fetch(API_BASE + "/" + SLUG + "/logout", {method:"POST", headers:{Authorization:"Bearer " + t0}}).catch(() => {}); break; }
     case "dperiod": S.dperiod = el.dataset.v; renderAll(); break;
     case "dpool": S.dpool = el.dataset.v; renderAll(); break;
     case "att-view": { const tk = S.tickets[id], at = tk && (tk.attachments||[]).find(x => x.id === el.dataset.a); if(at){ dlg = {kind:"image", ticketId:id, att:at.id}; renderDialog(); } break; }
@@ -2797,7 +2815,7 @@ document.addEventListener("click", async e => {
       dlg = {kind:"user", id:null, name:"", email:"", username:"", role:"requester", group:"center", location:"", approver:"", pools:Object.keys(POOLS), password:"", password2:"", error:""}; renderDialog(); break;
     case "u-edit": {
       const u = S.users[id]; if(!u || !isAdmin()) return;
-      dlg = {kind:"user", id, name:u.name, email:u.email || "", username:u.username, role:normRole(u.role), group:userGroup(u), location:u.location || "", approver:u.approver || "", pools:agentPools(u), password:"", password2:"", error:""}; renderDialog(); break;
+      dlg = {kind:"user", id, shared:!!u.shared, name:u.name, email:u.email || "", username:u.username, role:normRole(u.role), group:userGroup(u), location:u.location || "", approver:u.approver || "", pools:agentPools(u), password:"", password2:"", error:""}; renderDialog(); break;
     }
     case "u-gen": { const pw = genPassword(); dlg.showPw = true;
       ["#u-pass","#u-pass2"].forEach(sel => { const i = $(sel); if(i){ i.value = pw; i.type = "text"; } }); captureDialog();
@@ -2805,6 +2823,20 @@ document.addEventListener("click", async e => {
     case "u-invite": { const u = S.users[id]; if(!u) return;
       api("POST", `/users/${id}/invite`, {}).then(() => toast(`${u.email} adresine bağlantı gönderildi`)).catch(apiFail); break; }
     case "u-import": openImport(); break;
+    case "me-menu": openMeMenu(el); break;
+    case "switch-tenant": $("#poplayer").innerHTML = ""; switchTenant(el.dataset.v); break;
+    case "pw-change": $("#poplayer").innerHTML = ""; dlg = {kind:"pwchange", error:""}; renderDialog(); break;
+    case "pwc-save": {
+      const cur = $("#pwc-cur").value, a1 = $("#pwc-1").value, a2 = $("#pwc-2").value;
+      const fail = m => { dlg.error = m; renderDialog(); };
+      if(!cur) return fail("Mevcut parolanı yaz.");
+      if(a1.length < 8) return fail("Yeni parola en az 8 karakter olmalı.");
+      if(a1 !== a2) return fail("Yeni parolalar eşleşmiyor.");
+      try{ const r = await api("POST", "/password/change", {current:cur, password:a1}); if(r.token) setToken(r.token); dlg = null; renderDialog();
+        toast((S.myTenants||[]).length > 1 ? "Parolan değişti; tüm firmalarında yeni parolayı kullanacaksın." : "Parolan değişti."); }
+      catch(e){ fail(e.message); }
+      break;
+    }
     case "u-export": exportUsers().catch(e => toast(e.message, true)); break;
     case "imp-run": runImport(false); break;
     case "imp-skip": runImport(true); break;
@@ -2824,14 +2856,14 @@ document.addEventListener("click", async e => {
       if(dlg.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dlg.email.trim())) return fail("E-posta adresi geçersiz.");
       if(!edit && !dlg.password && !dlg.email.trim()) return fail("Parola belirlemezsen kullanıcıya bağlantı gönderebilmem için e-posta adresi gerekli.");
       if(dlg.role === "agent" && !dlg.pools.length) return fail("Destek personeli en az bir havuzda çalışmalı.");
-      const body = {name, role:dlg.role, email:dlg.email.trim(), group:dlg.group, location:(dlg.location || "").trim(), approver:dlg.approver || null, pools:dlg.pools};
+      const body = {name, role:dlg.role, email:(dlg.email || "").trim(), group:dlg.group, location:(dlg.location || "").trim(), approver:dlg.approver || null, pools:dlg.pools};
       if(dlg.password) body.password = dlg.password;
       if(!edit) body.username = uname;
       const btn = el; btn.disabled = true;
       try{
         const r = edit ? await api("PATCH", `/users/${dlg.id}`, body) : await api("POST", "/users", body);
         S.users[r.user.id] = r.user; dlg = null; renderDialog(); renderAll();
-        toast(edit ? `${r.user.name} güncellendi` : body.password ? `${r.user.name} eklendi. Giriş: ${r.user.username}` : `${r.user.name} eklendi, parola belirleme bağlantısı e-postayla gönderildi`);
+        toast(edit ? `${r.user.name} güncellendi` : r.linked ? `${r.user.name} başka firmada da kayıtlı; bu firmaya bağlandı ve mevcut parolasıyla giriş yapabilir.` : body.password ? `${r.user.name} eklendi. Giriş: ${r.user.username}` : `${r.user.name} eklendi, parola belirleme bağlantısı e-postayla gönderildi`);
       }catch(e){ btn.disabled = false; fail(e.message); }
       break;
     }
@@ -3195,6 +3227,27 @@ async function exportUsers(){
   XLSX.writeFile(wb, `TIMA_kullanicilar_${SLUG}_${stamp}.xlsx`);
   toast(`${rows.length} kullanıcı Excel'e aktarıldı`);
 }
+function openMeMenu(anchor){
+  const l = $("#poplayer"), r = anchor.getBoundingClientRect(), me = account(S.session.id) || {};
+  const firms = S.myTenants || [];
+  l.innerHTML = `<div class="scrim" data-act="pick-close" style="background:transparent;z-index:59;animation:none"></div>
+    <div class="pop menu" role="menu" style="right:${Math.max(8, window.innerWidth - r.right)}px;top:${r.bottom + 6}px;width:280px">
+      <div class="mh"><b>${esc(me.name || "")}</b>${esc(me.username || "")}${me.email ? " · " + esc(me.email) : ""}</div>
+      ${firms.length > 1 ? `<div class="ms">Firmalarım</div>${firms.map(f => `<button class="opt" role="menuitem" data-act="switch-tenant" data-v="${esc(f.slug)}">${esc(f.name)}<span class="vis" style="font-size:12px">/${esc(f.slug)}</span>${f.slug === SLUG ? `<span class="cur">✓</span>` : ""}</button>`).join("")}<div style="border-top:1px solid var(--line);margin:4px 0"></div>` : ""}
+      <button class="opt" role="menuitem" data-act="pw-change">Parolamı değiştir</button>
+      <button class="opt" role="menuitem" data-act="logout">Çıkış yap</button>
+    </div>`;
+}
+async function switchTenant(slug){
+  if(slug === SLUG) return;
+  try{
+    const r = await fetch(API_BASE + "/" + slug + "/switch", {method:"POST", headers:{Authorization:"Bearer " + TOKEN}});
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(j.message || "Firmaya geçilemedi.");
+    localStorage.setItem("tima-token:" + slug, j.token);
+    location.href = "/" + slug;
+  }catch(e){ toast(e.message, true); }
+}
 function openImport(){ dlg = {kind:"import", stage:"pick", invite:true}; renderDialog(); }
 async function readImportFile(file){
   dlg.loading = true; dlg.error = ""; dlg.fileName = file.name; renderDialog();
@@ -3277,6 +3330,7 @@ async function syncNow(){
     if(d.tenant) applyTenant(d.tenant);
     S.syncSince = d.serverTime;
     S.ready = true;
+    S.myTenants = d.me.tenants || [];
     unlock(d.me);
     if(!deepLinkDone){ deepLinkDone = true; const m = location.hash.match(/^#c=([^&]+)/); if(m){ const key = decodeURIComponent(m[1]); const t = Object.values(S.tickets).find(x => x.key === key); if(t){ S.open = t.id; renderAll(); } history.replaceState(null, "", location.pathname); } }
   }catch(e){ if(e.status !== 401) console.warn("sync", e.message); }
