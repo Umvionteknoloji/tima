@@ -45,6 +45,7 @@ button{cursor:pointer}
 .tgt{display:grid;grid-template-columns:24px 1fr 170px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
 .tgt:first-child{border-top:0}
 .tgt .pl{grid-column:2 / 4;display:flex;gap:14px;font-size:13.5px;color:var(--muted)}
+.tgt .rq{grid-column:2 / 4;display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .shared{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px}
 .tabs{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px;width:max-content;margin-bottom:16px}
 .tab{border:0;background:transparent;padding:6px 14px;border-radius:7px;font-weight:600;color:var(--muted)}
@@ -127,7 +128,7 @@ a{color:var(--accent)}
     <section class="panel" data-pane="users" hidden>
       <h2>Kullanıcılar</h2>
       <p class="sub">Bir kişiyi birden fazla firmaya eklemek için burada ara, <b>Firmaya ekle</b> ile hedef firmaları seç. Kişi tüm firmalarında aynı kullanıcı adı, e-posta ve parolayla giriş yapar; firmalar arasında menüden geçer. Rol ve havuzlar her firmada ayrıdır.</p>
-      <div style="display:flex;gap:8px;margin-bottom:12px;max-width:520px"><input class="inp" id="u-q" placeholder="Ad, kullanıcı adı ya da e-posta ara"><button class="btn" id="u-search">Ara</button></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><input class="inp" id="u-q" placeholder="Ad, kullanıcı adı ya da e-posta ara" style="max-width:420px"><button class="btn" id="u-search">Ara</button><span class="spacer"></span><button class="btn primary" id="u-new">+ Yeni kullanıcı</button></div>
       <div class="tw"><table><thead><tr><th>Kişi</th><th>Firmaları</th><th></th></tr></thead><tbody id="userRows"><tr><td colspan="3" class="hint">Aramak için bir isim yaz ya da boş bırakıp Ara'ya bas.</td></tr></tbody></table></div>
     </section>
 
@@ -160,6 +161,25 @@ a{color:var(--accent)}
     </section>
   </div>
 </div>
+
+<!-- yeni kullanıcı -->
+<dialog id="dUser">
+  <form id="userForm" method="dialog">
+    <div class="dh"><h3>Yeni kullanıcı</h3><p class="hint" style="margin:4px 0 0">Kişiyi bir ya da birden fazla firmaya aynı anda ekle. Birden fazla firma seçersen ortak hesap olur: hepsinde aynı kullanıcı adı ve parolayla girer.</p></div>
+    <div class="db">
+      <div class="row2">
+        <label class="fld"><span>Ad soyad</span><input class="inp" id="w-name" required></label>
+        <label class="fld"><span>Kullanıcı adı</span><input class="inp" id="w-user" autocapitalize="off" spellcheck="false" placeholder="ad.soyad" required><span class="hint">Küçük harf, rakam, nokta, tire, alt çizgi.</span></label>
+      </div>
+      <label class="fld"><span>E-posta</span><input class="inp" id="w-mail" type="email" required></label>
+      <label class="fld"><span>Parola <span class="hint" style="font-weight:400">(boş bırakırsan kişiye parola belirleme bağlantısı gider)</span></span><input class="inp" id="w-pass" type="password" autocomplete="new-password"></label>
+      <fieldset><legend>Firmalar</legend><div id="w-list"></div></fieldset>
+      <label class="fld" style="flex-direction:row;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="w-notify" checked> Parola belirlediysem kişiye “hesabınıza eklendiniz” e-postası gönder</label>
+      <div class="err" id="w-err"></div>
+    </div>
+    <div class="df"><button class="btn" value="cancel" formnovalidate>Vazgeç</button><button class="btn primary" id="w-save" value="default">Kullanıcıyı oluştur</button></div>
+  </form>
+</dialog>
 
 <!-- firmaya ekle -->
 <dialog id="dLink">
@@ -356,19 +376,57 @@ $("#userRows").addEventListener("click", async e => {
   $("#k-title").textContent = `${u.name} · firmaya ekle`;
   $("#k-sub").textContent = `${u.username} · ${u.email}. Kişi seçtiğin firmalara aynı kullanıcı adı ve mevcut parolasıyla girer.`;
   $("#k-err").textContent = "";
-  $("#k-list").innerHTML = avail.length ? avail.map(t => `<div class="tgt" data-t="${esc(t.slug)}">
+  fillTargets($("#k-list"), avail, "Kişi zaten tüm firmalarda.");
+  $("#dLink").showModal();
+});
+// firma seçim satırları (yeni kullanıcı ve firmaya ekle pencerelerinde ortak)
+function fillTargets(box, list, emptyMsg){
+  box.innerHTML = list.length ? list.map(t => `<div class="tgt" data-t="${esc(t.slug)}">
       <input type="checkbox" class="k-on" aria-label="${esc(t.name)}">
       <b>${esc(t.name)} <span class="hint" style="font-weight:400">/${esc(t.slug)}</span></b>
       <select class="inp k-role"><option value="agent">Destek personeli</option><option value="admin">Yönetici</option><option value="requester">Talep sahibi</option></select>
       <div class="pl k-pools"><label><input type="checkbox" value="center" checked> Merkez havuzu</label><label><input type="checkbox" value="store" checked> Mağaza havuzu</label></div>
-    </div>`).join("") : `<p class="hint">Kişi zaten tüm firmalarda.</p>`;
-  $("#k-list").querySelectorAll(".k-role").forEach(sel => sel.addEventListener("change", () => { sel.closest(".tgt").querySelector(".k-pools").hidden = sel.value !== "agent"; }));
-  $("#dLink").showModal();
+      <div class="rq k-rq" hidden><select class="inp k-group"><option value="center">Merkez kullanıcısı</option><option value="store">Mağaza kullanıcısı</option><option value="regional">Bölge müdürü</option></select><input class="inp k-loc" placeholder="Mağaza / birim / bölge"></div>
+    </div>`).join("") : `<p class="hint">${esc(emptyMsg)}</p>`;
+  box.querySelectorAll(".k-role").forEach(sel => sel.addEventListener("change", () => {
+    const row = sel.closest(".tgt"); row.querySelector(".k-pools").hidden = sel.value !== "agent"; row.querySelector(".k-rq").hidden = sel.value !== "requester";
+    row.querySelector(".k-on").checked = true;
+  }));
+  box.querySelectorAll(".tgt input:not(.k-on), .tgt select").forEach(x => x.addEventListener("focus", () => x.closest(".tgt").querySelector(".k-on").checked = true));
+}
+function readTargets(box){
+  return [...box.querySelectorAll(".tgt")].filter(r => r.querySelector(".k-on").checked).map(r => ({
+    tenant: r.dataset.t, role: r.querySelector(".k-role").value, pools: [...r.querySelectorAll(".k-pools input:checked")].map(x => x.value),
+    group: r.querySelector(".k-group").value, location: r.querySelector(".k-loc").value.trim() }));
+}
+$("#u-new").addEventListener("click", () => {
+  $("#userForm").reset(); $("#w-err").textContent = "";
+  fillTargets($("#w-list"), tenants.filter(t => t.active), "Önce bir firma oluştur.");
+  $("#dUser").showModal();
+});
+$("#w-name").addEventListener("input", () => {
+  if($("#w-user").dataset.touched) return;
+  const map = {"ç":"c","ğ":"g","ı":"i","ö":"o","ş":"s","ü":"u"};
+  $("#w-user").value = $("#w-name").value.toLocaleLowerCase("tr-TR").replace(/[çğıöşü]/g, c => map[c]).trim().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
+});
+$("#w-user").addEventListener("keydown", () => $("#w-user").dataset.touched = "1");
+$("#w-save").addEventListener("click", async e => {
+  e.preventDefault(); const err = $("#w-err"); err.textContent = "";
+  if(!$("#userForm").reportValidity()) return;
+  const targets = readTargets($("#w-list"));
+  if(!targets.length) return err.textContent = "En az bir firma seç.";
+  const pw = $("#w-pass").value; if(pw && pw.length < 8) return err.textContent = "Parola en az 8 karakter olmalı.";
+  e.target.disabled = true;
+  try{
+    const r = await api("POST", "/users", {name:$("#w-name").value.trim(), username:$("#w-user").value.trim().toLowerCase(), email:$("#w-mail").value.trim(), password:pw || undefined, targets, notify:$("#w-notify").checked});
+    $("#dUser").close(); $("#u-q").value = $("#w-user").value.trim(); await loadUsers(); await loadTenants();
+    alert(`Kullanıcı oluşturuldu: ${r.tenants.join(", ")}${r.shared ? " (ortak hesap)" : ""}.${r.invited ? "\nParola belirleme bağlantısı e-postayla gönderildi." : ""}`);
+  }catch(ex){ err.textContent = ex.message; }
+  finally{ e.target.disabled = false; }
 });
 $("#k-save").addEventListener("click", async e => {
   e.preventDefault(); const err = $("#k-err"); err.textContent = "";
-  const targets = [...$("#k-list").querySelectorAll(".tgt")].filter(r => r.querySelector(".k-on").checked).map(r => ({
-    tenant: r.dataset.t, role: r.querySelector(".k-role").value, pools: [...r.querySelectorAll(".k-pools input:checked")].map(x => x.value) }));
+  const targets = readTargets($("#k-list"));
   if(!targets.length) return err.textContent = "En az bir firma seç.";
   const src = linking[0]; e.target.disabled = true;
   try{
