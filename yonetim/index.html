@@ -38,6 +38,14 @@ button{cursor:pointer}
 .err{color:var(--danger);font-size:13.5px;min-height:18px}
 .ok{color:var(--done);font-size:13.5px}
 .card{max-width:420px;margin:60px auto}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);border-radius:999px;padding:2px 4px 2px 10px;font-size:13px;margin:2px 4px 2px 0;background:var(--surface)}
+.chip small{color:var(--muted)}
+.chip button{border:0;background:transparent;color:var(--muted);font-size:12px;padding:2px 6px;border-radius:50%}
+.chip button:hover{background:var(--danger-soft);color:var(--danger)}
+.tgt{display:grid;grid-template-columns:24px 1fr 170px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.tgt:first-child{border-top:0}
+.tgt .pl{grid-column:2 / 4;display:flex;gap:14px;font-size:13.5px;color:var(--muted)}
+.shared{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px}
 .tabs{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px;width:max-content;margin-bottom:16px}
 .tab{border:0;background:transparent;padding:6px 14px;border-radius:7px;font-weight:600;color:var(--muted)}
 .tab[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
@@ -103,6 +111,7 @@ a{color:var(--accent)}
   <div id="main" hidden>
     <div class="tabs" role="tablist">
       <button class="tab" data-tab="tenants" aria-selected="true">Firmalar</button>
+      <button class="tab" data-tab="users" aria-selected="false">Kullanıcılar</button>
       <button class="tab" data-tab="mail" aria-selected="false">E-posta</button>
       <button class="tab" data-tab="log" aria-selected="false">Gönderim kaydı</button>
     </div>
@@ -113,6 +122,13 @@ a{color:var(--accent)}
         <span class="spacer"></span><button class="btn primary" id="newTenant">+ Yeni firma</button>
       </div>
       <div class="tw"><table><thead><tr><th>Firma</th><th>Giriş adresi</th><th>Durum</th><th>Kullanıcı</th><th>Çağrı (açık)</th><th>Gönderici</th><th></th></tr></thead><tbody id="tenantRows"></tbody></table></div>
+    </section>
+
+    <section class="panel" data-pane="users" hidden>
+      <h2>Kullanıcılar</h2>
+      <p class="sub">Bir kişiyi birden fazla firmaya eklemek için burada ara, <b>Firmaya ekle</b> ile hedef firmaları seç. Kişi tüm firmalarında aynı kullanıcı adı, e-posta ve parolayla giriş yapar; firmalar arasında menüden geçer. Rol ve havuzlar her firmada ayrıdır.</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;max-width:520px"><input class="inp" id="u-q" placeholder="Ad, kullanıcı adı ya da e-posta ara"><button class="btn" id="u-search">Ara</button></div>
+      <div class="tw"><table><thead><tr><th>Kişi</th><th>Firmaları</th><th></th></tr></thead><tbody id="userRows"><tr><td colspan="3" class="hint">Aramak için bir isim yaz ya da boş bırakıp Ara'ya bas.</td></tr></tbody></table></div>
     </section>
 
     <section class="panel" data-pane="mail" hidden>
@@ -144,6 +160,19 @@ a{color:var(--accent)}
     </section>
   </div>
 </div>
+
+<!-- firmaya ekle -->
+<dialog id="dLink">
+  <form id="linkForm" method="dialog">
+    <div class="dh"><h3 id="k-title">Firmaya ekle</h3><p class="hint" id="k-sub" style="margin:4px 0 0"></p></div>
+    <div class="db">
+      <div id="k-list"></div>
+      <label class="fld" style="flex-direction:row;gap:8px;align-items:center;font-weight:500;margin-top:6px"><input type="checkbox" id="k-notify" checked> Kişiye “hesabınıza eklendiniz” e-postası gönder</label>
+      <div class="err" id="k-err"></div>
+    </div>
+    <div class="df"><button class="btn" value="cancel" formnovalidate>Vazgeç</button><button class="btn primary" id="k-save" value="default">Seçili firmalara ekle</button></div>
+  </form>
+</dialog>
 
 <!-- yeni firma -->
 <dialog id="dNew">
@@ -199,7 +228,7 @@ a{color:var(--accent)}
         </div>
       </fieldset>
       <fieldset><legend>Yönetici ekle</legend>
-        <p class="hint" style="margin:0 0 10px">Firmanın yöneticisi kilitlenirse ya da yeni yönetici gerekirse buradan eklenir.</p>
+        <p class="hint" style="margin:0 0 10px">Firmanın yöneticisi kilitlenirse ya da yeni yönetici gerekirse buradan eklenir. Firmada zaten olan bir kullanıcı adı ya da e-posta yazarsan yeni hesap açılmaz, o kişi yönetici yapılır. Başka firmadaki birini eklemek için <b>Kullanıcılar</b> sekmesini kullan.</p>
         <div class="row2">
           <label class="fld"><span>Ad soyad</span><input class="inp" id="e-aname"></label>
           <label class="fld"><span>Kullanıcı adı</span><input class="inp" id="e-auser" autocapitalize="off" spellcheck="false"></label>
@@ -267,6 +296,7 @@ document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () =>
   document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", String(x === b)));
   document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== b.dataset.tab);
   if(b.dataset.tab === "log") loadLog();
+  if(b.dataset.tab === "users") loadUsers();
 }));
 
 async function loadAll(){ await Promise.all([loadTenants(), loadMail()]); }
@@ -293,6 +323,61 @@ async function loadLog(){
     : `<tr><td colspan="6" class="hint">Henüz gönderim yok.</td></tr>`;
 }
 $("#reloadLog").addEventListener("click", loadLog);
+
+/* kullanıcılar: firmalar arası paylaşım */
+let people = [], linking = null;
+const ROLE = {admin:"Yönetici", agent:"Destek personeli", requester:"Talep sahibi"};
+async function loadUsers(){
+  const r = await api("GET", "/users?q=" + encodeURIComponent($("#u-q").value.trim()));
+  const groups = new Map();
+  r.users.forEach(u => { const k = u.identity || (u.tenant + "/" + u.id); if(!groups.has(k)) groups.set(k, []); groups.get(k).push(u); });
+  people = [...groups.values()];
+  $("#userRows").innerHTML = people.length ? people.map((ms, i) => {
+    const u = ms[0], shared = !!u.identity;
+    return `<tr><td><b>${esc(u.name)}</b>${shared ? `<span class="shared">Ortak hesap</span>` : ""}<div class="hint">${esc(u.username)}${u.email ? " · " + esc(u.email) : " · e-posta yok"}</div></td>
+      <td>${ms.map(m => `<span class="chip">${esc(m.tenantName)} <small>${ROLE[m.role]}${m.active ? "" : " · pasif"}</small>${shared && ms.length > 1 ? `<button type="button" data-unlink="${esc(m.tenant)}|${esc(m.id)}" title="${esc(m.tenantName)} firmasından çıkar">✕</button>` : ""}</span>`).join("")}</td>
+      <td style="text-align:right"><button class="btn sm" data-link="${i}" ${u.email ? "" : "disabled title='Ortak hesap için e-posta gerekli'"}>Firmaya ekle</button></td></tr>`;
+  }).join("") : `<tr><td colspan="3" class="hint">Eşleşen kullanıcı yok.</td></tr>`;
+}
+$("#u-search").addEventListener("click", loadUsers);
+$("#u-q").addEventListener("keydown", e => { if(e.key === "Enter") loadUsers(); });
+$("#userRows").addEventListener("click", async e => {
+  const ul = e.target.closest("[data-unlink]");
+  if(ul){
+    const [tenant, userId] = ul.dataset.unlink.split("|"); const t = tenants.find(x => x.slug === tenant);
+    if(!confirm(`Bu kişiyi ${t ? t.name : tenant} firmasından çıkarmak istiyor musun? Diğer firmalarındaki hesabı etkilenmez.`)) return;
+    try{ await api("POST", "/users/unlink", {tenant, userId}); await loadUsers(); await loadTenants(); }catch(ex){ alert(ex.message); }
+    return;
+  }
+  const lb = e.target.closest("[data-link]"); if(!lb) return;
+  const ms = people[+lb.dataset.link], u = ms[0]; linking = ms;
+  const have = new Set(ms.map(m => m.tenant));
+  const avail = tenants.filter(t => !have.has(t.slug));
+  $("#k-title").textContent = `${u.name} · firmaya ekle`;
+  $("#k-sub").textContent = `${u.username} · ${u.email}. Kişi seçtiğin firmalara aynı kullanıcı adı ve mevcut parolasıyla girer.`;
+  $("#k-err").textContent = "";
+  $("#k-list").innerHTML = avail.length ? avail.map(t => `<div class="tgt" data-t="${esc(t.slug)}">
+      <input type="checkbox" class="k-on" aria-label="${esc(t.name)}">
+      <b>${esc(t.name)} <span class="hint" style="font-weight:400">/${esc(t.slug)}</span></b>
+      <select class="inp k-role"><option value="agent">Destek personeli</option><option value="admin">Yönetici</option><option value="requester">Talep sahibi</option></select>
+      <div class="pl k-pools"><label><input type="checkbox" value="center" checked> Merkez havuzu</label><label><input type="checkbox" value="store" checked> Mağaza havuzu</label></div>
+    </div>`).join("") : `<p class="hint">Kişi zaten tüm firmalarda.</p>`;
+  $("#k-list").querySelectorAll(".k-role").forEach(sel => sel.addEventListener("change", () => { sel.closest(".tgt").querySelector(".k-pools").hidden = sel.value !== "agent"; }));
+  $("#dLink").showModal();
+});
+$("#k-save").addEventListener("click", async e => {
+  e.preventDefault(); const err = $("#k-err"); err.textContent = "";
+  const targets = [...$("#k-list").querySelectorAll(".tgt")].filter(r => r.querySelector(".k-on").checked).map(r => ({
+    tenant: r.dataset.t, role: r.querySelector(".k-role").value, pools: [...r.querySelectorAll(".k-pools input:checked")].map(x => x.value) }));
+  if(!targets.length) return err.textContent = "En az bir firma seç.";
+  const src = linking[0]; e.target.disabled = true;
+  try{
+    const r = await api("POST", "/users/link", {tenant:src.tenant, userId:src.id, targets, notify:$("#k-notify").checked});
+    $("#dLink").close(); await loadUsers(); await loadTenants();
+    alert(`${src.name} eklendi: ${r.added.map(a => a.name + (a.merged ? " (mevcut hesabıyla birleştirildi)" : "")).join(", ")}`);
+  }catch(ex){ err.textContent = ex.message; }
+  finally{ e.target.disabled = false; }
+});
 
 $("#mailForm").addEventListener("submit", async e => {
   e.preventDefault(); const err = $("#m-err"); err.textContent = "";
@@ -362,7 +447,7 @@ $("#e-addadmin").addEventListener("click", async () => {
   const err = $("#e-err"); err.textContent = "";
   try{
     const r = await api("POST", `/tenants/${editing.slug}/admin`, {name:$("#e-aname").value.trim(), username:$("#e-auser").value.trim().toLowerCase(), email:$("#e-amail").value.trim()});
-    err.className = "ok"; err.textContent = `${r.user.username} eklendi${r.invited ? ", davet gönderildi" : ""}.`; await loadTenants();
+    err.className = "ok"; err.textContent = r.promoted ? `${r.user.username} zaten vardı; yönetici yapıldı. Mevcut parolasıyla giriş yapabilir.` : `${r.user.username} eklendi${r.invited ? ", davet gönderildi" : ""}.`; await loadTenants();
   }catch(ex){ err.className = "err"; err.textContent = ex.message; }
 });
 start();
