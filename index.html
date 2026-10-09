@@ -56,7 +56,16 @@ button{cursor:pointer}
 .logo .lg-stem{fill:var(--bg)}
 .wordmark{font-weight:800;font-size:20px;letter-spacing:.14em;line-height:1}
 .wordmark small{display:block;font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--muted);margin-top:3px}
+.btn.refresh{gap:6px;padding:7px 12px}
+.btn.refresh .rf-i{display:inline-block;font-size:16px;line-height:1;font-weight:700}
+.btn.refresh.spinning .rf-i{animation:rf .5s linear infinite}
+@keyframes rf{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.btn.refresh.spinning .rf-i{animation:none;opacity:.5}}
+@media (max-width:1320px){.btn.refresh .rf-l{display:none}.btn.refresh{padding:7px 10px}}
 .userchip{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;border:1px solid transparent;background:transparent;border-radius:9px;padding:4px 8px}
+.uc-txt{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;min-width:0}
+.uc-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.uc-t{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
 .userchip:hover{background:var(--surface-2);border-color:var(--line)}
 .menu .mh{padding:8px 10px 6px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line);margin-bottom:4px}
 .menu .mh b{display:block;color:var(--ink);font-size:14px}
@@ -665,9 +674,10 @@ td.t{font-weight:500;max-width:420px}
     </nav>
     <div class="spacer"></div>
     <span class="mode local" id="mode"><i></i>Bu tarayıcıda saklanıyor</span>
+    <button class="btn refresh" id="refreshBtn" data-act="refresh" title="Yenile" aria-label="Yenile"><span class="rf-i" aria-hidden="true">↻</span><span class="rf-l">Yenile</span></button>
     <button class="btn primary" data-act="create">+ Talep oluştur</button>
     <button class="userchip" id="userchip" data-act="me-menu" aria-haspopup="menu" title="Hesap"></button>
-    <button class="btn sm ghost" data-act="logout">Çıkış yap</button>
+
   </div>
 </header>
 <div class="bar" id="filters">
@@ -1956,7 +1966,9 @@ function renderList(){
 function renderUserChip(){
   const c = $("#userchip"); if(!c) return;
   if(!S.session){ c.innerHTML = ""; return; }
-  c.innerHTML = `${avatar(meRef(),26)}<span>${esc(personName(meRef()))}</span><span class="role ${S.session.role}">${ROLES[S.session.role].label}</span>${(S.myTenants||[]).length > 1 ? `<span class="vis" style="font-size:12px">· ${esc(S.tenant ? S.tenant.name : "")} ▾</span>` : `<span class="vis">▾</span>`}`;
+  const multi = (S.myTenants||[]).length > 1;
+  c.innerHTML = `${avatar(meRef(),26)}<span class="uc-txt"><span class="uc-n">${esc(personName(meRef()))}</span>${multi ? `<span class="uc-t">${esc(S.tenant ? S.tenant.name : "")}</span>` : ""}</span><span class="role ${S.session.role}">${ROLES[S.session.role].label}</span><span class="vis">▾</span>`;
+  c.title = `${personName(meRef())}${multi && S.tenant ? " · " + S.tenant.name : ""} · hesap menüsü`;
 }
 function renderAdmin(){
   const accts = allAccounts();
@@ -2896,6 +2908,7 @@ document.addEventListener("click", async e => {
       api("POST", `/users/${id}/invite`, {}).then(() => toast(`${u.email} adresine bağlantı gönderildi`)).catch(apiFail); break; }
     case "u-import": openImport(); break;
     case "me-menu": openMeMenu(el); break;
+    case "refresh": manualRefresh(); break;
     case "reopen": if(t){ dlg = {kind:"reopen", ticketId:t.id, text:"", error:""}; renderDialog(); } break;
     case "ro-send": {
       const txt = ($("#ro-text")?.value || "").trim(); dlg.text = txt;
@@ -3323,6 +3336,26 @@ async function exportUsers(){
   XLSX.writeFile(wb, `TIMA_kullanicilar_${SLUG}_${stamp}.xlsx`);
   toast(`${rows.length} kullanıcı Excel'e aktarıldı`);
 }
+// Elle yenileme: yeni düşen çağrıları hemen getirir ve kaç tane geldiğini söyler
+let refreshing = false;
+async function manualRefresh(){
+  if(refreshing || !S.session) return;
+  refreshing = true;
+  const btn = $("#refreshBtn"); btn.classList.add("spinning"); btn.disabled = true;
+  const before = new Set(Object.keys(S.tickets)), waitBefore = isStaff() ? new Set(inboxTickets().map(t => t.id)) : null;
+  const t0 = Date.now();
+  try{
+    await syncNow();
+    const added = Object.keys(S.tickets).filter(id => !before.has(id) && canSee(S.tickets[id]));
+    const newWaiting = waitBefore ? inboxTickets().filter(t => !waitBefore.has(t.id)).length : 0;
+    if(isStaff()) toast(newWaiting ? `${newWaiting} yeni çağrı bekliyor` : added.length ? `${added.length} yeni kayıt geldi` : "Güncel · yeni çağrı yok");
+    else toast(added.length ? `${added.length} yeni kayıt geldi` : "Güncel");
+  }catch(e){ apiFail(e); }
+  finally{
+    // dönüş animasyonu en az bir tur görünsün
+    setTimeout(() => { btn.classList.remove("spinning"); btn.disabled = false; refreshing = false; }, Math.max(0, 500 - (Date.now() - t0)));
+  }
+}
 function openMeMenu(anchor){
   const l = $("#poplayer"), r = anchor.getBoundingClientRect(), me = account(S.session.id) || {};
   const firms = S.myTenants || [];
@@ -3429,7 +3462,8 @@ async function syncNow(){
     if(c.ptemplates) S.ptpl = c.ptemplates;
     if(c.categories) S.cats = c.categories;
     if(d.tenant) applyTenant(d.tenant);
-    S.syncSince = d.serverTime;
+    S.syncSince = d.serverTime; S.lastSync = Date.now();
+    const rb = $("#refreshBtn"); if(rb) rb.title = "Yenile · son güncelleme " + new Date().toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
     S.ready = true;
     S.myTenants = d.me.tenants || [];
     unlock(d.me);
