@@ -1283,12 +1283,40 @@ async function setField(t0, field, value){
 }
 
 /* ---------------- rendering ---------------- */
+// Ekran yeniden çizilirken kullanıcının yerini ve yarım kalan yazısını korur:
+// kaydırma konumları (pencere ve iç paneller) ile gönderilmemiş metin alanları geri yüklenir.
+const SCROLLERS = ".dr-b, .tablewrap, .board, .col-b, .feed, .dl-b, .memlist, .pv-body pre";
+const DRAFT_IDS = ["cmt", "cmt-int", "t-new", "lnk-key", "cat-new", "tpt-new", "ro-text", "ap-note"];
+function captureView(el){
+  const scroll = [];
+  el.querySelectorAll(SCROLLERS).forEach(n => {
+    if(n.scrollTop || n.scrollLeft){
+      const cls = n.className.split(" ")[0], idx = [...el.querySelectorAll("." + cls)].indexOf(n);
+      scroll.push([cls, idx, n.scrollTop, n.scrollLeft]);
+    }
+  });
+  const drafts = {};
+  DRAFT_IDS.forEach(id => { const n = el.querySelector("#" + id); if(n) drafts[id] = n.type === "checkbox" ? n.checked : n.value; });
+  return {scroll, drafts, owner: S.open, winY: window.scrollY, winX: window.scrollX};
+}
+function restoreView(el, v){
+  v.scroll.forEach(([cls, idx, top, left]) => { const n = el.querySelectorAll("." + cls)[idx]; if(n){ n.scrollTop = top; n.scrollLeft = left; } });
+  if(v.owner === S.open) Object.entries(v.drafts).forEach(([id, val]) => {
+    const n = el.querySelector("#" + id); if(!n) return;
+    if(n.type === "checkbox"){ if(val) n.checked = true; } else if(val && !n.value) n.value = val;
+  });
+  if(window.scrollY !== v.winY || window.scrollX !== v.winX) window.scrollTo(v.winX, v.winY);
+}
 function guardedSet(el, html, force){
   const a = document.activeElement;
   if(!force && el.contains(a) && a !== el && (a.tagName === "TEXTAREA" || (a.tagName === "INPUT" && !["checkbox","radio","button"].includes(a.type)))){
     el.dataset.stale = "1"; return false;
   }
-  el.innerHTML = html; delete el.dataset.stale; return true;
+  if(el._html === html){ delete el.dataset.stale; return true; }   // aynı içerik: hiç dokunma
+  const v = captureView(el);
+  el.innerHTML = html; el._html = html; delete el.dataset.stale;
+  restoreView(el, v);
+  return true;
 }
 document.addEventListener("focusout", () => setTimeout(() => {
   document.querySelectorAll("[data-stale]").forEach(() => renderAll());
@@ -3464,9 +3492,10 @@ async function syncNow(){
     if(d.tenant) applyTenant(d.tenant);
     S.syncSince = d.serverTime; S.lastSync = Date.now();
     const rb = $("#refreshBtn"); if(rb) rb.title = "Yenile · son güncelleme " + new Date().toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+    const changed = d.full || d.tickets.length || d.users.length || (d.projects||[]).length || (d.ptasks||[]).length || (d.deleted||[]).length || Object.keys(c).length;
     S.ready = true;
     S.myTenants = d.me.tenants || [];
-    unlock(d.me);
+    if(changed || !S.session) unlock(d.me);
     if(!deepLinkDone){ deepLinkDone = true; const m = location.hash.match(/^#c=([^&]+)/); if(m){ const key = decodeURIComponent(m[1]); const t = Object.values(S.tickets).find(x => x.key === key); if(t){ S.open = t.id; renderAll(); } history.replaceState(null, "", location.pathname); } }
   }catch(e){ if(e.status !== 401) console.warn("sync", e.message); }
   finally{ syncing = false; }
