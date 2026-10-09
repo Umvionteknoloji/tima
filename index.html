@@ -93,6 +93,15 @@ button{cursor:pointer}
 .reopen .btn{flex:none}
 .reotag{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--danger-soft);color:var(--danger);white-space:nowrap}
 .ta-grp{display:flex;gap:12px;flex-wrap:wrap}
+.aslist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:260px;overflow:auto}
+.asrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
+.asrow:first-child{border-top:0}
+.asrow:hover{background:var(--surface-2)}
+.asrow:has(input:checked){background:var(--accent-soft)}
+.asrow:has(input:disabled){opacity:.55;cursor:default}
+.as-n{display:flex;flex-direction:column;flex:1;min-width:0} .as-n small{color:var(--muted);font-size:12px}
+.as-load{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.chipbtn:disabled{opacity:.45;cursor:not-allowed}
 .cat-add{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .cat-add .inp{flex:1;min-width:200px}
 .cat-row{display:grid;grid-template-columns:minmax(160px,1fr) 110px 110px auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
@@ -809,6 +818,16 @@ const DEFAULT_SLA = {
 };
 const SLA_KEYS = ["claim","response","resolve"];
 const DAYS = [[1,"Pzt"],[2,"Sal"],[3,"Çar"],[4,"Per"],[5,"Cum"],[6,"Cmt"],[0,"Paz"]];
+// Firmanın rolleri: üç temel rol + yöneticinin eklediği özel roller (her biri bir yetki seviyesi taşır)
+const BASE_LABEL = {admin:"Yönetici yetkisi", agent:"Destek personeli yetkisi", requester:"Talep sahibi yetkisi"};
+function rolesList(){
+  const list = Array.isArray(S.roles) ? S.roles : [];
+  const out = ["admin","agent","requester"].map(id => ({id, name:ROLES[id].label, ...(list.find(x => x.id === id) || {}), base:id, builtin:true}));
+  list.filter(x => !ROLES[x.id]).forEach(x => out.push({id:x.id, name:x.name, base:ROLES[x.base] ? x.base : "agent"}));
+  return out;
+}
+function roleOf(u){ const id = (u && u.roleId) || normRole(u && u.role); return rolesList().find(r => r.id === id) || rolesList().find(r => r.id === normRole(u && u.role)); }
+function roleLabel(u){ const r = roleOf(u); return r ? r.name : ""; }
 function normRole(r){ return r === "member" ? "agent" : (ROLES[r] ? r : "requester"); }
 
 /* ---------------- state ---------------- */
@@ -2004,7 +2023,7 @@ function renderUserChip(){
   const c = $("#userchip"); if(!c) return;
   if(!S.session){ c.innerHTML = ""; return; }
   const multi = (S.myTenants||[]).length > 1;
-  c.innerHTML = `${avatar(meRef(),26)}<span class="uc-txt"><span class="uc-n">${esc(personName(meRef()))}</span>${multi ? `<span class="uc-t">${esc(S.tenant ? S.tenant.name : "")}</span>` : ""}</span><span class="role ${S.session.role}">${ROLES[S.session.role].label}</span><span class="vis">▾</span>`;
+  c.innerHTML = `${avatar(meRef(),26)}<span class="uc-txt"><span class="uc-n">${esc(personName(meRef()))}</span>${multi ? `<span class="uc-t">${esc(S.tenant ? S.tenant.name : "")}</span>` : ""}</span><span class="role ${S.session.role}">${esc(roleLabel(meAcct()) || ROLES[S.session.role].label)}</span><span class="vis">▾</span>`;
   c.title = `${personName(meRef())}${multi && S.tenant ? " · " + S.tenant.name : ""} · hesap menüsü`;
 }
 function renderAdmin(){
@@ -2021,7 +2040,7 @@ function renderAdmin(){
     const ref = "a:" + u.id, self = S.session && S.session.id === u.id;
     return `<tr class="${u.active ? "" : "inactive"}">
       <td><span style="display:inline-flex;gap:10px;align-items:center">${avatar(ref,30)}<span><b style="font-weight:600">${esc(u.name)}</b>${u.shared ? `<span class="sharedtag" title="Birden fazla firmada aynı kullanıcı adı ve parolayla çalışıyor">Ortak hesap</span>` : ""}${self ? ` <span class="uname">(sen)</span>` : ""}<br><span class="uname">${esc(u.username)}${u.email ? " · " + esc(u.email) : ` · <span style="color:var(--danger)">e-posta yok</span>`}${u.hasPassword === false ? ` · <span style="color:var(--prog)">parola belirlenmedi</span>` : ""}</span></span></span></td>
-      <td><span class="role ${normRole(u.role)}">${ROLES[normRole(u.role)].label}</span></td>
+      <td><span class="role ${normRole(u.role)}" title="${esc(BASE_LABEL[normRole(u.role)])}">${esc(roleLabel(u))}</span></td>
       <td class="who" style="font-size:13.5px">${normRole(u.role) === "requester" ? `${esc(GROUPS[userGroup(u)].label)}${u.location ? `<small>${esc(u.location)}</small>` : ""}<small>Onaylayıcı: ${esc(personName(approverFor(u)))}${validApprover(u.approver) ? "" : " (varsayılan)"}</small>`
         : normRole(u.role) === "agent" ? `<span style="display:inline-flex;gap:4px;flex-wrap:wrap">${agentPools(u).map(poolTag).join("")}</span>` : `<span class="vis">Tüm havuzlar</span>`}</td>
       <td><span class="state ${u.active ? "" : "off"}">${u.active ? "Aktif" : "Devre dışı"}</span></td>
@@ -2052,6 +2071,7 @@ function renderAdmin(){
       <tbody>${rows}</tbody></table></div>
     ${accts.length === 1 ? `<p class="sub" style="margin:14px 0 0">Henüz ekip üyesi yok. İlk kullanıcıyı ekle; giriş bilgilerini kendisiyle paylaş.</p>` : ""}
   </section>
+  ${renderRolesAdmin()}
   ${renderApprAdmin()}
   ${renderSlaAdmin()}
   ${renderFormAdmin()}
@@ -2060,6 +2080,23 @@ function renderAdmin(){
   </div>`;
 }
 
+function renderRolesAdmin(){
+  const ro = S.readOnly ? "disabled" : "";
+  const counts = {}; allAccounts().forEach(u => { const r = roleOf(u); if(r) counts[r.id] = (counts[r.id] || 0) + 1; });
+  return `<section class="panel">
+    <div class="adm-h"><div><h2>Roller</h2><p class="sub" style="margin:4px 0 0">Ekipleri rollere ayır: örneğin “Saha ekibi”, “Network ekibi”, “Yazılım ekibi”. Her rol bir yetki seviyesi taşır; destek ve yönetici seviyesindeki roller çağrı atarken seçilebilir. Kullanıcıları rollere <b>Düzenle</b> ile taşıyabilirsin.</p></div>
+      <span class="spacer"></span><button class="btn" data-act="rl-add" ${ro}>+ Rol ekle</button></div>
+    <div class="tablewrap"><table style="min-width:560px"><thead><tr><th>Rol adı</th><th>Yetki seviyesi</th><th>Kullanıcı</th><th></th></tr></thead><tbody>
+      ${rolesList().map(r => `<tr>
+        <td><input class="inp" value="${esc(r.name)}" data-act="rl-name" data-id="${esc(r.id)}" aria-label="Rol adı" ${ro}></td>
+        <td>${r.builtin ? `<span class="hintline">${BASE_LABEL[r.base]} <span class="vis">(temel rol)</span></span>`
+          : `<select class="inp" data-act="rl-base" data-id="${esc(r.id)}" ${ro}>${["agent","admin","requester"].map(b => `<option value="${b}" ${r.base === b ? "selected" : ""}>${BASE_LABEL[b]}</option>`).join("")}</select>`}</td>
+        <td style="font-variant-numeric:tabular-nums">${counts[r.id] || 0}</td>
+        <td style="text-align:right">${r.builtin ? "" : `<button class="btn sm ghost danger" data-act="rl-del" data-id="${esc(r.id)}" ${counts[r.id] || ro ? "disabled" : ""} title="${counts[r.id] ? "Bu roldeki kullanıcıları önce başka role taşı" : "Rolü sil"}">Sil</button>`}</td></tr>`).join("")}
+    </tbody></table></div>
+  </section>`;
+}
+function saveRoles(list){ S.roles = list; renderAll(); putConfig("roles", list.map(r => ({id:r.id, name:r.name, base:r.base}))); }
 function renderApprAdmin(){
   const ro = S.readOnly ? "disabled" : "", A = S.appr || DEFAULT_APPR;
   const elig = allAccounts().filter(u => u.active && normRole(u.role) !== "agent");
@@ -2368,7 +2405,7 @@ function renderDrawer(){
         ${S.readOnly ? "" : `<div class="cmt-new">${avatar(meRef(),28)}<textarea id="cmt" placeholder="${staff ? "Yorum ekle" : pauseIds().has(t.status) ? "Destek ekibine yanıtını yaz" : "Destek ekibine mesaj yaz"}" aria-label="Yorum"></textarea><button class="btn primary sm" data-act="add-cmt" data-id="${t.id}">Gönder</button></div>
           ${staff ? `<div class="cmt-opts"><label class="chk"><input type="checkbox" id="cmt-int"> Dahili not: yalnızca destek ekibi görür</label><span class="vis">İşaretlenmezse talep sahibi de görür</span></div>` : ""}`}
         <div class="feed">${comments.length ? comments.map(c => `<div class="ev ${c.internal ? "internal" : ""}">${avatar(c.by,28)}<div class="ev-b">
-          <div class="ev-h"><b>${esc(personName(c.by))}</b>${c.internal ? `<span class="int-tag">${c.kind === "solution" ? "Çözüm notu · dahili" : "Dahili"}</span>` : ""}<time title="${fullDate(c.at)}">${ago(c.at)}</time></div>
+          <div class="ev-h"><b>${esc(personName(c.by))}</b>${c.internal ? `<span class="int-tag">${c.kind === "solution" ? "Çözüm notu · dahili" : c.kind === "handover" ? `Atama notu → ${esc(personName(c.to))}` : "Dahili"}</span>` : ""}<time title="${fullDate(c.at)}">${ago(c.at)}</time></div>
           <div class="ev-txt">${esc(c.text)}</div>${c.reopen ? `<div class="ev-via" style="color:var(--danger);font-weight:700">↺ Çözülmedi bildirimi · çağrı yeniden açıldı</div>` : c.via ? `<div class="ev-via">${c.closing ? "Kapatma notu" : `“${esc(c.via)}” sırasında`}</div>` : ""}</div></div>`).join("") : `<p style="color:var(--muted);margin:0">Henüz yorum yok.</p>`}</div>`
       : `<div class="feed">${hist.length ? hist.map(histItem).join("") : `<p style="color:var(--muted);margin:0">Kayıt yok.</p>`}</div>`}
     </div>`);
@@ -2401,7 +2438,8 @@ function moveControl(t){
     <select class="sel" id="mv-sel" ${ro}><option value="">Durum seç</option>
       ${targets.map(s => { const tr = findTransition(t.status, s.id); return `<option value="${s.id}" ${s.id===sel?"selected":""}>${esc(s.name)}${cat(s.id)==="done" ? "  (kapat)" : ""}${tr && tr.name !== s.name ? `  · ${esc(tr.name)}` : ""}</option>`; }).join("")}
     </select>
-    <button class="btn primary sm" data-act="mv-apply" data-id="${t.id}" ${ro}>Uygula</button></div>`;
+    <button class="btn primary sm" data-act="mv-apply" data-id="${t.id}" ${ro}>Uygula</button>
+    <span class="spacer"></span><button class="btn sm" data-act="assign-open" data-id="${t.id}" ${ro}>Çağrıyı ata</button></div>`;
 }
 function solutionBox(t){
   const sols = (t.comments||[]).filter(c => c.kind === "solution");
@@ -2565,8 +2603,8 @@ function renderDialog(force = true){
         <label class="fld"><span>E-posta</span><input class="inp" id="u-email" type="email" value="${esc(dlg.email || "")}" placeholder="ayse.yilmaz@firma.com.tr" autocomplete="off" ${dlg.shared ? "disabled" : ""}><small class="hintline">${dlg.shared ? "Ortak hesap: e-posta ve parolayı yalnızca kişinin kendisi değiştirebilir." : "Bildirimler ve parola bağlantısı bu adrese gider."}</small></label>
         ${edit ? "" : `<label class="fld"><span>Kullanıcı adı <span class="req">*</span></span><input class="inp" id="u-username" value="${esc(dlg.username)}" placeholder="ayse.yilmaz" autocapitalize="off" spellcheck="false" autocomplete="off"><small class="hintline">Küçük harf, rakam, nokta, tire veya alt çizgi. Sonradan değiştirilemez.</small></label>`}
         <label class="fld"><span>Rol</span><select class="inp" id="u-role">
-          ${["requester","agent","admin"].map(r => `<option value="${r}" ${dlg.role===r?"selected":""}>${ROLES[r].label}</option>`).join("")}</select>
-          <small class="hintline">${esc(ROLES[dlg.role]?.desc || "")}</small></label>
+          ${["agent","admin","requester"].map(b => `<optgroup label="${BASE_LABEL[b]}">${rolesList().filter(r => r.base === b).map(r => `<option value="${esc(r.id)}" ${(dlg.roleId || dlg.role) === r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</optgroup>`).join("")}</select>
+          <small class="hintline">${esc(BASE_LABEL[dlg.role])}: ${esc(ROLES[dlg.role]?.desc || "")}. Yeni rolleri aşağıdaki <b>Roller</b> bölümünden ekleyebilirsin.</small></label>
         ${dlg.role === "requester" ? `<label class="fld"><span>Kullanıcı grubu <span class="req">*</span></span><select class="inp" id="u-group">
             ${Object.entries(GROUPS).map(([k,g]) => `<option value="${k}" ${dlg.group===k?"selected":""}>${g.label}</option>`).join("")}</select>
             <small class="hintline">${dlg.group === "regional" ? "Bölge müdürleri hem Merkez hem Mağaza havuzuna çağrı açabilir." : dlg.group === "store" ? "Mağaza havuzuna çağrı açar: yeni mağaza açılışı, yeni donanım, destek." : "Merkez havuzuna çağrı açar: destek talebi, yeni donanım ya da yazılım talebi."}</small></label>
@@ -2608,6 +2646,68 @@ function renderDialog(force = true){
         <a class="btn sm" href="${esc(url)}&dl=1">İndir</a>
         <button class="btn sm" data-act="dlg-cancel" aria-label="Kapat">✕</button></div>
       <div class="pv-body pv-${pk}">${body}</div>
+    </div>`;
+  } else if(dlg.kind === "assign"){
+    const tk = S.tickets[dlg.ticketId]; if(!tk){ dlg = null; w.remove(); return; }
+    const people = assignableIn(tk), byRole = {};
+    people.forEach(u => { const r = roleOf(u); if(r) (byRole[r.id] = byRole[r.id] || []).push(u); });
+    const roles = rolesList().filter(r => r.base !== "requester");
+    const members = (byRole[dlg.roleId] || []).sort((a,b) => a.name.localeCompare(b.name, "tr"));
+    const openCount = ref => Object.values(S.tickets).filter(x => x.assignee === ref && cat(x.status) !== "done").length;
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(560px,calc(100% - 24px))">
+      <div class="dl-h"><h3 id="dlgt">Çağrıyı ata</h3><p class="dl-sub"><span class="key">${esc(tk.key)}</span> · ${esc(tk.title)}${tk.assignee ? ` · şu an: <b>${esc(personName(tk.assignee))}</b>` : ""}</p></div>
+      <div class="dl-b">
+        <div class="fld"><span>1. Rol</span><div class="chips">${roles.map(r => `<button type="button" class="chipbtn" data-act="as-role" data-v="${esc(r.id)}" aria-pressed="${dlg.roleId === r.id}" ${(byRole[r.id] || []).length ? "" : "disabled title='Bu havuzda çalışan kimse yok'"}>${esc(r.name)}<span class="n">${(byRole[r.id] || []).length}</span></button>`).join("")}</div>
+          <small class="hintline">${POOLS[poolOf(tk)].label} havuzunda çalışabilen kişiler sayılır.</small></div>
+        ${dlg.roleId ? `<div class="fld"><span>2. Kişi</span><div class="aslist">${members.length ? members.map(u => `<label class="asrow"><input type="radio" name="as-p" value="a:${u.id}" ${dlg.assignee === "a:" + u.id ? "checked" : ""} ${tk.assignee === "a:" + u.id ? "disabled" : ""}>
+              ${avatar("a:" + u.id, 26)}<span class="as-n"><b>${esc(u.name)}</b><small>${esc(u.username)}${tk.assignee === "a:" + u.id ? " · şu an atanan" : ""}</small></span><span class="as-load" title="Üzerindeki açık çağrı">${openCount("a:" + u.id)} açık</span></label>`).join("")
+              : `<p class="hintline" style="margin:0">Bu rolde uygun kişi yok.</p>`}</div></div>` : ""}
+        <label class="fld"><span>Not <span class="vis">(isteğe bağlı · dahili, talep sahibi görmez)</span></span><textarea class="desc" id="as-note" style="min-height:70px" placeholder="Neyi denedin, neden aktarıyorsun?">${esc(dlg.note || "")}</textarea></label>
+        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
+      </div>
+      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="as-save">Ata</button></div>
+    </div>`;
+  } else if(dlg.kind === "reopen"){
+    const tk = S.tickets[dlg.ticketId]; if(!tk){ dlg = null; w.remove(); return; }
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt">
+      <div class="dl-h"><h3 id="dlgt">Çözülmedi</h3><p class="dl-sub"><span class="key">${esc(tk.key)}</span> · ${esc(tk.title)}</p></div>
+      <div class="dl-b">
+        <label class="fld"><span>Sorun neden çözülmedi? <span class="req">*</span></span><textarea class="desc" id="ro-text" style="min-height:110px" placeholder="Ne denedin, hâlâ ne oluyor? Hata mesajı varsa ekle.">${esc(dlg.text || "")}</textarea></label>
+        <p class="hintline" style="margin:0">Çağrı “Tekrar açıldı” durumuyla destek ekibinin havuzuna düşer ve müsait bir personel üstlenir. SLA süresi sıfırlanmaz, kaldığı yerden devam eder.</p>
+        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
+      </div>
+      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="ro-send">Gönder</button></div>
+    </div>`;
+  } else if(dlg.kind === "pwchange"){
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(420px,calc(100% - 24px))">
+      <div class="dl-h"><h3 id="dlgt">Parolamı değiştir</h3>${(S.myTenants||[]).length > 1 ? `<p class="dl-sub">Bu hesap ${S.myTenants.length} firmada ortak kullanılıyor; yeni parola hepsinde geçerli olur.</p>` : ""}</div>
+      <div class="dl-b">
+        <label class="fld"><span>Mevcut parola</span><input class="inp" id="pwc-cur" type="password" autocomplete="current-password"></label>
+        <label class="fld"><span>Yeni parola</span><input class="inp" id="pwc-1" type="password" autocomplete="new-password"><small class="hintline">En az 8 karakter.</small></label>
+        <label class="fld"><span>Yeni parola (tekrar)</span><input class="inp" id="pwc-2" type="password" autocomplete="new-password"></label>
+        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
+      </div>
+      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="pwc-save">Parolayı değiştir</button></div>
+    </div>`;
+  } else if(dlg.kind === "import"){
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(620px,calc(100% - 24px))">
+      <div class="dl-h"><h3 id="dlgt">Excel'den kullanıcı aktar</h3><p class="dl-sub">TIMA kullanıcı aktarım şablonunu kullan (<a href="/TIMA_kullanici_aktarim_sablonu.xlsx" download>örnek şablonu indir</a>). Dosyadaki “Kullanıcılar” sayfası okunur; parola yazılmaz, her kullanıcıya e-postayla parola belirleme bağlantısı gider. Sistemde zaten olan kişiler hatalı satır olarak listelenir; “hatalı satırları atla” ile yalnızca yeniler aktarılır.</p></div>
+      <div class="dl-b">
+        ${dlg.stage === "pick" ? `<label class="btn" style="cursor:pointer;align-self:flex-start">Excel dosyası seç<input type="file" accept=".xlsx,.xls" id="imp-file" class="sr"></label>
+          ${dlg.loading ? `<p class="hintline">Dosya okunuyor…</p>` : ""}` : ""}
+        ${dlg.stage === "review" ? `<p style="margin:0"><b>${dlg.rows.length}</b> satır okundu${dlg.fileName ? ` · ${esc(dlg.fileName)}` : ""}.</p>
+          ${dlg.errors && dlg.errors.length ? `<div class="notice" style="background:var(--danger-soft)"><b>${dlg.errors.length} satırda sorun var:</b><ul style="margin:6px 0 0;padding-left:18px">${dlg.errors.slice(0,30).map(x => `<li>${x.row ? `Satır ${x.row}: ` : ""}${esc(x.error)}</li>`).join("")}</ul>${dlg.errors.length > 30 ? `<p class="hintline">… ve ${dlg.errors.length - 30} sorun daha</p>` : ""}</div>` : `<p class="hintline" style="margin:0">Aktarmaya hazır.</p>`}
+          <label class="chk" style="color:var(--ink)"><input type="checkbox" id="imp-invite" ${dlg.invite ? "checked" : ""}> Parola belirleme bağlantısını e-postayla gönder</label>` : ""}
+        ${dlg.stage === "done" ? `<p style="margin:0"><b>${dlg.result.created}</b> kullanıcı eklendi${dlg.result.invited ? `, <b>${dlg.result.invited}</b> kişiye davet gönderildi` : ""}.</p>
+          ${(dlg.result.warnings||[]).length ? `<div class="notice"><ul style="margin:0;padding-left:18px">${dlg.result.warnings.map(x => `<li>${x.row ? `Satır ${x.row}: ` : ""}${esc(x.error)}</li>`).join("")}</ul></div>` : ""}` : ""}
+        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
+      </div>
+      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">${dlg.stage === "done" ? "Kapat" : "Vazgeç"}</button>
+        ${dlg.stage === "review" ? (dlg.errors && dlg.errors.length ? `<button class="btn" data-act="imp-skip" ${dlg.busy ? "disabled" : ""}>Hatalı satırları atla, kalanları aktar</button>` : `<button class="btn primary" data-act="imp-run" ${dlg.busy ? "disabled" : ""}>Aktar</button>`) : ""}</div>
     </div>`;
   } else if(dlg.kind === "approve"){
     const t = S.tickets[dlg.ticketId]; if(!t){ dlg = null; w.remove(); return; }
@@ -2704,6 +2804,9 @@ function captureDialog(){
   } else if(dlg.kind === "transition"){
     dlg.comment = $("#d-cmt")?.value ?? dlg.comment;
     dlg.resolution = $("#d-res")?.value ?? dlg.resolution;
+  } else if(dlg.kind === "assign"){
+    dlg.note = $("#as-note")?.value ?? dlg.note;
+    const pr = document.querySelector('input[name="as-p"]:checked'); if(pr) dlg.assignee = pr.value;
   } else if(dlg.kind === "approve"){
     dlg.note = $("#ap-note")?.value ?? dlg.note;
   } else if(dlg.kind === "project"){
@@ -2724,7 +2827,7 @@ function captureDialog(){
   } else if(dlg.kind === "user"){
     dlg.name = $("#u-name")?.value ?? dlg.name;
     dlg.username = $("#u-username")?.value ?? dlg.username;
-    dlg.role = $("#u-role")?.value ?? dlg.role;
+    if($("#u-role")){ dlg.roleId = $("#u-role").value; const rr = rolesList().find(r => r.id === dlg.roleId); dlg.role = rr ? rr.base : "requester"; }
     dlg.group = $("#u-group")?.value ?? dlg.group;
     dlg.location = $("#u-loc")?.value ?? dlg.location;
     dlg.approver = $("#u-appr")?.value ?? dlg.approver;
@@ -2935,10 +3038,10 @@ document.addEventListener("click", async e => {
     }
     case "u-add":
       if(!isAdmin()) return;
-      dlg = {kind:"user", id:null, name:"", email:"", username:"", role:"requester", group:"center", location:"", approver:"", pools:Object.keys(POOLS), password:"", password2:"", error:""}; renderDialog(); break;
+      dlg = {kind:"user", id:null, name:"", email:"", username:"", role:"requester", roleId:"requester", group:"center", location:"", approver:"", pools:Object.keys(POOLS), password:"", password2:"", error:""}; renderDialog(); break;
     case "u-edit": {
       const u = S.users[id]; if(!u || !isAdmin()) return;
-      dlg = {kind:"user", id, shared:!!u.shared, name:u.name, email:u.email || "", username:u.username, role:normRole(u.role), group:userGroup(u), location:u.location || "", approver:u.approver || "", pools:agentPools(u), password:"", password2:"", error:""}; renderDialog(); break;
+      dlg = {kind:"user", id, shared:!!u.shared, name:u.name, email:u.email || "", username:u.username, role:normRole(u.role), roleId:u.roleId || normRole(u.role), group:userGroup(u), location:u.location || "", approver:u.approver || "", pools:agentPools(u), password:"", password2:"", error:""}; renderDialog(); break;
     }
     case "u-gen": { const pw = genPassword(); dlg.showPw = true;
       ["#u-pass","#u-pass2"].forEach(sel => { const i = $(sel); if(i){ i.value = pw; i.type = "text"; } }); captureDialog();
@@ -2946,6 +3049,12 @@ document.addEventListener("click", async e => {
     case "u-invite": { const u = S.users[id]; if(!u) return;
       api("POST", `/users/${id}/invite`, {}).then(() => toast(`${u.email} adresine bağlantı gönderildi`)).catch(apiFail); break; }
     case "u-import": openImport(); break;
+    case "rl-add": { if(!isAdmin()) return; const nid = "r" + Math.random().toString(36).slice(2, 9);
+      saveRoles([...rolesList(), {id:nid, name:"Yeni rol", base:"agent"}]);
+      setTimeout(() => { const i = $(`[data-act=rl-name][data-id="${nid}"]`); if(i){ i.focus(); i.select(); } }, 0); break; }
+    case "rl-del": { if(!isAdmin()) return; const r = rolesList().find(x => x.id === id); if(!r || r.builtin) return;
+      dlg = {kind:"confirm", title:`“${r.name}” rolü silinsin mi?`, text:"Rolde kullanıcı yok; rol listeden kaldırılır.", ok:"Rolü sil", danger:true, run:() => saveRoles(rolesList().filter(x => x.id !== id))};
+      renderDialog(); break; }
     case "me-menu": openMeMenu(el); break;
     case "refresh": manualRefresh(); break;
     case "reopen": if(t){ dlg = {kind:"reopen", ticketId:t.id, text:"", error:""}; renderDialog(); } break;
@@ -2989,7 +3098,7 @@ document.addEventListener("click", async e => {
       if(dlg.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dlg.email.trim())) return fail("E-posta adresi geçersiz.");
       if(!edit && !dlg.password && !dlg.email.trim()) return fail("Parola belirlemezsen kullanıcıya bağlantı gönderebilmem için e-posta adresi gerekli.");
       if(dlg.role === "agent" && !dlg.pools.length) return fail("Destek personeli en az bir havuzda çalışmalı.");
-      const body = {name, role:dlg.role, email:(dlg.email || "").trim(), group:dlg.group, location:(dlg.location || "").trim(), approver:dlg.approver || null, pools:dlg.pools};
+      const body = {name, role:dlg.role, roleId:dlg.roleId || dlg.role, email:(dlg.email || "").trim(), group:dlg.group, location:(dlg.location || "").trim(), approver:dlg.approver || null, pools:dlg.pools};
       if(dlg.password) body.password = dlg.password;
       if(!edit) body.username = uname;
       const btn = el; btn.disabled = true;
@@ -3021,7 +3130,16 @@ document.addEventListener("click", async e => {
     case "subtab": S.tab = el.dataset.v; renderDrawer(); break;
     case "do-tr": { const tr = S.wf.transitions.find(x => x.id === el.dataset.tr); if(t && tr) startTransition(t, tr); break; }
     case "assign-me": if(t) setField(t, "assignee", meRef()); break;
-    case "pick-assignee": if(t && isStaff()) openPicker(el, t.assignee, ref => setField(S.tickets[id], "assignee", ref), poolOf(t)); break;
+    case "pick-assignee": case "assign-open": if(t && isStaff() && !blocked(t)) openAssign(t); break;
+    case "as-role": if(dlg){ captureDialog(); dlg.roleId = el.dataset.v; dlg.assignee = null; renderDialog(); } break;
+    case "as-save": {
+      captureDialog(); const tk = S.tickets[dlg.ticketId];
+      if(!dlg.assignee){ dlg.error = "Önce rolü, sonra kişiyi seç."; renderDialog(); return; }
+      el.disabled = true;
+      try{ const r = await api("POST", `/tickets/${tk.id}/assign`, {assignee:dlg.assignee, note:(dlg.note || "").trim()}); const who = personName(dlg.assignee); dlg = null; renderDialog(); putTicket(r.ticket); toast(`${tk.key} → ${who}`); }
+      catch(e){ el.disabled = false; dlg.error = e.message; renderDialog(); }
+      break;
+    }
     case "add-cmt": {
       const ta = $("#cmt"); const txt = ta && ta.value.trim(); if(!txt || !t) return;
       const internal = isStaff() && !!$("#cmt-int")?.checked;
@@ -3162,6 +3280,18 @@ document.addEventListener("change", e => {
       else if(a === "ff-opts") f.options = el.value.split(",").map(x => x.trim()).filter(Boolean);
       else if(a === "ff-help") f.help = el.value.trim() || undefined;
     });
+    return;
+  }
+  if(a === "rl-name" || a === "rl-base"){
+    if(!isAdmin()) return;
+    const list = rolesList().map(r => ({...r}));
+    const r = list.find(x => x.id === id); if(!r) return;
+    if(a === "rl-name"){ const v = el.value.trim(); if(!v){ el.value = r.name; return; }
+      if(list.some(x => x.id !== id && x.name.toLocaleLowerCase("tr-TR") === v.toLocaleLowerCase("tr-TR"))){ el.value = r.name; return toast("Bu adla başka bir rol var.", true); }
+      r.name = v.slice(0, 60); }
+    else { if(r.builtin) return; r.base = el.value; }
+    saveRoles(list);
+    toast(a === "rl-base" ? "Kaydedildi. Bu roldeki mevcut kullanıcıların yetkisi, kullanıcıyı bir sonraki düzenleyişinde yeni seviyeye geçer." : "Rol kaydedildi");
     return;
   }
   if(a === "ta-grp"){
@@ -3371,7 +3501,7 @@ async function exportUsers(){
   const opened = {}; Object.values(S.tickets).forEach(t => { opened[t.reporter] = (opened[t.reporter] || 0) + 1; });
   const rows = allAccounts().map(u => {
     const r = normRole(u.role), ap = u.approver && account(u.approver.slice(2));
-    return [u.name, u.username, u.email || "", roleL[r], r === "requester" ? groupL[userGroup(u)] : "", u.location || "", r === "requester" && ap ? ap.username : "",
+    return [u.name, u.username, u.email || "", roleLabel(u) || roleL[r], r === "requester" ? groupL[userGroup(u)] : "", u.location || "", r === "requester" && ap ? ap.username : "",
       r === "agent" ? poolL(u.pools) : "", u.active === false ? "Hayır" : "Evet", u.hasPassword === false ? "Hayır" : "Evet", opened["a:" + u.id] || 0,
       u.createdAt ? new Date(u.createdAt).toLocaleDateString("tr-TR") : ""];
   });
@@ -3404,6 +3534,16 @@ async function manualRefresh(){
     // dönüş animasyonu en az bir tur görünsün
     setTimeout(() => { btn.classList.remove("spinning"); btn.disabled = false; refreshing = false; }, Math.max(0, 500 - (Date.now() - t0)));
   }
+}
+// Çağrıyı ata: önce rol, sonra o roldeki kişi
+function assignableIn(t){
+  const pool = poolOf(t);
+  return allAccounts().filter(u => u.active !== false && normRole(u.role) !== "requester" && (normRole(u.role) === "admin" || agentPools(u).includes(pool)));
+}
+function openAssign(t){
+  const cur = t.assignee && account(t.assignee.slice(2));
+  dlg = {kind:"assign", ticketId:t.id, roleId: cur && roleOf(cur) ? roleOf(cur).id : null, assignee:null, note:"", error:""};
+  renderDialog();
 }
 function openMeMenu(anchor){
   const l = $("#poplayer"), r = anchor.getBoundingClientRect(), me = account(S.session.id) || {};
@@ -3511,6 +3651,7 @@ async function syncNow(){
     if(c.ptemplates) S.ptpl = c.ptemplates;
     if(c.categories) S.cats = c.categories;
     if(c.typeAccess) S.typeAccess = c.typeAccess;
+    if(c.roles) S.roles = c.roles;
     if(d.tenant) applyTenant(d.tenant);
     S.syncSince = d.serverTime; S.lastSync = Date.now();
     const rb = $("#refreshBtn"); if(rb) rb.title = "Yenile · son güncelleme " + new Date().toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
