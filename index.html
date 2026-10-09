@@ -92,6 +92,7 @@ button{cursor:pointer}
 .reopen.off{background:var(--surface);border:1px solid var(--line);color:var(--muted)}
 .reopen .btn{flex:none}
 .reotag{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--danger-soft);color:var(--danger);white-space:nowrap}
+.ta-grp{display:flex;gap:12px;flex-wrap:wrap}
 .cat-add{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .cat-add .inp{flex:1;min-width:200px}
 .cat-row{display:grid;grid-template-columns:minmax(160px,1fr) 110px 110px auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
@@ -1381,6 +1382,14 @@ function syncCatFilter(){
   sel.value = S.fcat;
 }
 function inboxTickets(){ return Object.values(S.tickets).filter(t => !t.assignee && cat(t.status) !== "done" && !blocked(t) && (isAdmin() || (isStaff() && myPools().includes(poolOf(t))))); }
+// Talep sahibinin grubu bu talep tipini açabilir mi? (destek ekibi ve yöneticiler her tipi açar)
+const DEFAULT_TYPE_ACCESS = {s_new_hw:["regional"], s_opening:["regional"]};
+function typeAccess(){ return S.typeAccess || DEFAULT_TYPE_ACCESS; }
+function canOpenType(k){
+  if(isStaff()) return true;
+  const a = typeAccess()[k];
+  return !Array.isArray(a) || a.includes(userGroup(meAcct()));
+}
 function createPools(){ return isAdmin() ? Object.keys(POOLS) : myPools(); }
 function waited(t){
   const m = slaMetrics(t), el = m.liveClaim || 0, lim = m.lim.claim * 60000;
@@ -2058,9 +2067,11 @@ function renderApprAdmin(){
   const noAppr = reqs.filter(u => !validApprover(u.approver)).length;
   return `<section class="panel">
     <h2>Onay süreci</h2>
-    <p class="sub">İşaretli talep tipleri destek ekibine düşmeden önce talep sahibinin onaylayıcısına gider. Her talep sahibinin onaylayıcısı Kullanıcılar bölümünden belirlenir: mağazalar için bölge müdürü, merkez kullanıcıları için birim müdürü. Destek ekibinin açtığı talepler onaya gönderilmez.</p>
-    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Havuz</th><th>Talep tipi</th><th>Onay gerekli</th></tr></thead><tbody>
-      ${Object.entries(TYPES).map(([k,T]) => `<tr><td>${poolTag(T.pool)}</td><td>${esc(T.label)}</td><td><label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="apc-type" data-k="${k}" ${A.types[k] ? "checked" : ""} ${ro}> ${A.types[k] ? "Onaya tabi" : "Doğrudan destek ekibine"}</label></td></tr>`).join("")}
+    <p class="sub"><b>Kimler açabilir:</b> talep sahiplerinden hangi grupların bu tipi seçebileceğini belirler; destek ekibi ve yöneticiler her tipi açabilir. <b>Onay gerekli:</b> işaretli talep tipleri destek ekibine düşmeden önce talep sahibinin onaylayıcısına gider. Her talep sahibinin onaylayıcısı Kullanıcılar bölümünden belirlenir: mağazalar için bölge müdürü, merkez kullanıcıları için birim müdürü. Destek ekibinin açtığı talepler onaya gönderilmez.</p>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Havuz</th><th>Talep tipi</th><th>Kimler açabilir</th><th>Onay gerekli</th></tr></thead><tbody>
+      ${Object.entries(TYPES).map(([k,T]) => `<tr><td>${poolTag(T.pool)}</td><td>${esc(T.label)}</td>
+        <td><div class="ta-grp">${Object.entries(GROUPS).filter(([g,G]) => G.pools.includes(T.pool)).map(([g,G]) => { const a = typeAccess()[k]; const on = !Array.isArray(a) || a.includes(g);
+          return `<label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="ta-grp" data-k="${k}" data-g="${g}" ${on ? "checked" : ""} ${ro}> ${esc(G.label.replace(" kullanıcısı",""))}</label>`; }).join("")}</div></td><td><label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="apc-type" data-k="${k}" ${A.types[k] ? "checked" : ""} ${ro}> ${A.types[k] ? "Onaya tabi" : "Doğrudan destek ekibine"}</label></td></tr>`).join("")}
     </tbody></table></div>
     <div class="hours" style="margin-top:14px">
       <label class="fld" style="min-width:280px"><span>Varsayılan onaylayıcı</span><select class="inp" data-act="apc-fallback" ${ro}><option value="" ${A.fallback ? "" : "selected"}>Seçilmedi (ilk yönetici)</option>${elig.map(u => `<option value="a:${u.id}" ${A.fallback === "a:"+u.id ? "selected" : ""}>${esc(u.name)} · ${esc(normRole(u.role) === "admin" ? "Yönetici" : GROUPS[userGroup(u)].label)}</option>`).join("")}</select>
@@ -2488,7 +2499,7 @@ function renderDialog(force = true){
         ${createPools().length > 1 ? `<div class="fld"><span>Çağrı nereye açılacak? <span class="req">*</span></span>
           <div class="seg">${createPools().map(p => `<button type="button" data-act="c-pool" data-v="${p}" aria-pressed="${dlg.pool===p}">${POOLS[p].label}<small>${esc(POOLS[p].desc)}</small></button>`).join("")}</div></div>` : ""}
         <div class="fld"><span>Talep tipi <span class="req">*</span> <span class="vis">· ${POOLS[dlg.pool].label} havuzu</span></span>
-          <div class="rtypes">${typesOf(dlg.pool).map(([k,T]) => `<label class="rtype"><input type="radio" name="ctype" value="${k}" ${dlg.type===k?"checked":""}><span><b>${esc(T.label)}</b><small>${esc(T.hint)}</small></span></label>`).join("")}</div></div>
+          <div class="rtypes">${typesOf(dlg.pool).filter(([k]) => canOpenType(k)).map(([k,T]) => `<label class="rtype"><input type="radio" name="ctype" value="${k}" ${dlg.type===k?"checked":""}><span><b>${esc(T.label)}</b><small>${esc(T.hint)}</small></span></label>`).join("")}</div></div>
         ${dlg.type && TYPES[dlg.type] && TYPES[dlg.type].pool === dlg.pool ? formInputs() : ""}
         <label class="fld"><span>Başlık <span class="req">*</span></span><input class="inp" id="c-title" value="${esc(dlg.title)}" placeholder="Örn. Giriş sayfasında şifre sıfırlama hatası"></label>
         <label class="fld"><span>Kategori ${isRequester() ? `<span class="req">*</span>` : `<span style="color:var(--muted);font-weight:400">(isteğe bağlı)</span>`}</span>
@@ -3153,6 +3164,16 @@ document.addEventListener("change", e => {
     });
     return;
   }
+  if(a === "ta-grp"){
+    if(!isAdmin()) return;
+    const ta = clone(typeAccess()), k = el.dataset.k, T = TYPES[k];
+    const all = Object.entries(GROUPS).filter(([g,G]) => G.pools.includes(T.pool)).map(([g]) => g);
+    let cur = Array.isArray(ta[k]) ? ta[k] : all.slice();
+    cur = el.checked ? [...new Set([...cur, el.dataset.g])] : cur.filter(g => g !== el.dataset.g);
+    if(!cur.length){ el.checked = true; return toast("En az bir grup bu talep tipini açabilmeli.", true); }
+    if(all.every(g => cur.includes(g))) delete ta[k]; else ta[k] = cur;
+    S.typeAccess = ta; renderAll(); putConfig("typeAccess", ta); toast("Kaydedildi"); return;
+  }
   if(a === "apc-type" || a === "apc-fallback"){
     const cfg = clone(S.appr || DEFAULT_APPR);
     if(a === "apc-type") cfg.types[el.dataset.k] = el.checked; else cfg.fallback = el.value || null;
@@ -3489,6 +3510,7 @@ async function syncNow(){
     if(c.forms) S.forms = c.forms;
     if(c.ptemplates) S.ptpl = c.ptemplates;
     if(c.categories) S.cats = c.categories;
+    if(c.typeAccess) S.typeAccess = c.typeAccess;
     if(d.tenant) applyTenant(d.tenant);
     S.syncSince = d.serverTime; S.lastSync = Date.now();
     const rb = $("#refreshBtn"); if(rb) rb.title = "Yenile · son güncelleme " + new Date().toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
