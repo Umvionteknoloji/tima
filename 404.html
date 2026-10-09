@@ -79,6 +79,10 @@ button{cursor:pointer}
 .xl-acts{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .xl-acts a.hintline{color:var(--accent);text-decoration:none;font-weight:600}
 .xl-acts a.hintline:hover{text-decoration:underline}
+.reopen{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--danger-soft);font-size:13.5px}
+.reopen.off{background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.reopen .btn{flex:none}
+.reotag{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--danger-soft);color:var(--danger);white-space:nowrap}
 .cat-add{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .cat-add .inp{flex:1;min-width:200px}
 .cat-row{display:grid;grid-template-columns:minmax(160px,1fr) 110px 110px auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
@@ -1067,6 +1071,7 @@ function pauseIntervals(t, until){
     else if(was && !is && start != null){ out.push([start, h.at]); start = null; }
   });
   if(start != null && ps.has(t.status)) out.push([start, until]);
+  (t.reopens || []).forEach(r => { if(r.closedAt && r.reopenedAt) out.push([r.closedAt, r.reopenedAt]); });
   return out;
 }
 function slaSpan(t, win, from, to, pauses){
@@ -1152,6 +1157,7 @@ function mergeSla(x){
   const d = clone(DEFAULT_SLA);
   if(x && x.hours) Object.assign(d.hours, x.hours);
   if(x && x.criteria) SLA_KEYS.forEach(k => Object.assign(d.criteria[k], x.criteria[k] || {}));
+  d.reopenDays = x && x.reopenDays >= 1 ? x.reopenDays : 5;
   return d;
 }
 function saveSla(cfg){ S.sla = cfg; renderAll(); putConfig("sla", cfg); }
@@ -1317,7 +1323,7 @@ function renderInbox(){
     <thead><tr><th>Anahtar</th><th>Başlık</th><th>Talep tipi</th><th>Kategori</th><th>Öncelik</th><th>Açan</th><th>${claim ? "Bekliyor" : "Durum"}</th>${claim ? `<th><span class="sr">İşlem</span></th>` : ""}</tr></thead>
     <tbody>${rows.map(t => `<tr data-act="open" data-id="${t.id}" tabindex="0">
       <td><span style="display:inline-flex;gap:8px;align-items:center">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span></span></td>
-      <td class="t">${esc(t.title)}</td>
+      <td class="t">${esc(t.title)}${(t.reopens||[]).length && cat(t.status) !== "done" ? ` <span class="reotag" title="Talep sahibi çözülmedi dedi">↺ Tekrar açıldı${t.reopens.length > 1 ? " ×" + t.reopens.length : ""}</span>` : ""}</td>
       <td>${typeTag(t)}</td>
       <td>${catTag(t.category)}</td>
       <td><span style="display:inline-flex;gap:6px;align-items:center">${priIcon(t.priority)}${esc((PRIS.find(p=>p.id===t.priority)||PRIS[2]).label)}</span></td>
@@ -1582,7 +1588,7 @@ function renderProjectDetail(p){
     body = `${ed ? `<div class="projbox" style="margin-bottom:12px"><input class="inp" id="lnk-key" style="max-width:220px" placeholder="Çağrı no, ör. MGZ-12" aria-label="Bağlanacak çağrı numarası"><button class="btn sm" data-act="p-link">Çağrı bağla</button><span class="hintline">Çağrı detayındaki “Proje” alanından da bağlayabilirsin.</span></div>` : ""}
       ${tks.length ? `<div class="tablewrap"><table><thead><tr><th>Anahtar</th><th>Başlık</th><th>Talep tipi</th><th>Durum</th><th>Atanan</th><th>Açan</th>${ed ? `<th></th>` : ""}</tr></thead><tbody>
         ${tks.map(t => `<tr data-act="open" data-id="${t.id}" tabindex="0"><td><span style="display:inline-flex;gap:8px;align-items:center">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span></span></td>
-          <td class="t">${esc(t.title)}</td><td>${typeTag(t)}</td><td>${pill(t.status)}</td>
+          <td class="t">${esc(t.title)}${(t.reopens||[]).length && cat(t.status) !== "done" ? ` <span class="reotag" title="Talep sahibi çözülmedi dedi">↺ Tekrar açıldı${t.reopens.length > 1 ? " ×" + t.reopens.length : ""}</span>` : ""}</td><td>${typeTag(t)}</td><td>${pill(t.status)}</td>
           <td><span style="display:inline-flex;gap:8px;align-items:center">${avatar(t.assignee,22)}${esc(personName(t.assignee))}</span></td>
           <td class="who">${esc(personName(t.reporter))}<small>${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></td>
           ${ed ? `<td style="text-align:right"><button class="btn sm ghost" data-act="p-unlink" data-id="${t.id}">Bağlantıyı kaldır</button></td>` : ""}</tr>`).join("")}
@@ -1655,7 +1661,7 @@ function renderApprovals(){
     <section class="panel">
       <h2>${isAdmin() ? "Son kararlar" : "Verdiğim kararlar"}</h2>
       ${decided.length ? `<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Anahtar</th><th>Başlık</th><th>Talep sahibi</th><th>Karar</th>${isAdmin() ? "<th>Karar veren</th>" : ""}<th>Not</th><th>Tarih</th></tr></thead><tbody>
-        ${decided.map(t => `<tr data-act="open" data-id="${t.id}" tabindex="0"><td><span class="key">${esc(t.key)}</span></td><td class="t">${esc(t.title)}</td><td>${esc(personName(t.reporter))}</td>
+        ${decided.map(t => `<tr data-act="open" data-id="${t.id}" tabindex="0"><td><span class="key">${esc(t.key)}</span></td><td class="t">${esc(t.title)}${(t.reopens||[]).length && cat(t.status) !== "done" ? ` <span class="reotag" title="Talep sahibi çözülmedi dedi">↺ Tekrar açıldı${t.reopens.length > 1 ? " ×" + t.reopens.length : ""}</span>` : ""}</td><td>${esc(personName(t.reporter))}</td>
           <td>${t.approval.state === "approved" ? `<span class="apt ok">Onaylandı</span>` : `<span class="apt rej">Reddedildi</span>`}</td>${isAdmin() ? `<td>${esc(personName(t.approval.decidedBy))}</td>` : ""}
           <td style="max-width:280px;color:var(--muted)">${esc(t.approval.note || "—")}</td><td style="color:var(--muted);white-space:nowrap">${ago(t.approval.decidedAt)}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="sub" style="margin:8px 0 0">Henüz karar yok.</p>`}
@@ -2059,6 +2065,9 @@ function renderSlaAdmin(){
       <span style="display:flex;gap:10px;flex-wrap:wrap">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="sla-day" data-d="${d}" ${h.days.includes(d)?"checked":""} ${ro}> ${l}</label>`).join("")}</span>
     </div>
     <p class="sub" style="margin:10px 0 0">Bu saatler dışında ve işaretli olmayan günlerde açılan çağrılar mesai dışı sayılır.</p>
+    <h3 class="sec-t" style="margin-top:18px">Çözülmedi bildirimi</h3>
+    <div class="hours"><label class="chk" style="color:var(--ink)">Kapanıştan sonra <input class="inp" type="number" min="1" max="30" style="width:76px" value="${S.sla.reopenDays || 5}" data-act="sla-reopen" ${ro}> iş günü</label></div>
+    <p class="sub" style="margin:8px 0 0">Talep sahibi bu süre içinde “Çözülmedi” diyerek kapanan çağrıyı yeniden açabilir; süre dolunca düğme pasifleşir. İş günleri yukarıdaki mesai günlerine göre sayılır.</p>
   </section>`;
 }
 function renderCategories(){
@@ -2255,7 +2264,7 @@ function renderDrawer(){
           ${staff ? `<div class="cmt-opts"><label class="chk"><input type="checkbox" id="cmt-int"> Dahili not: yalnızca destek ekibi görür</label><span class="vis">İşaretlenmezse talep sahibi de görür</span></div>` : ""}`}
         <div class="feed">${comments.length ? comments.map(c => `<div class="ev ${c.internal ? "internal" : ""}">${avatar(c.by,28)}<div class="ev-b">
           <div class="ev-h"><b>${esc(personName(c.by))}</b>${c.internal ? `<span class="int-tag">${c.kind === "solution" ? "Çözüm notu · dahili" : "Dahili"}</span>` : ""}<time title="${fullDate(c.at)}">${ago(c.at)}</time></div>
-          <div class="ev-txt">${esc(c.text)}</div>${c.via ? `<div class="ev-via">${c.closing ? "Kapatma notu" : `“${esc(c.via)}” sırasında`}</div>` : ""}</div></div>`).join("") : `<p style="color:var(--muted);margin:0">Henüz yorum yok.</p>`}</div>`
+          <div class="ev-txt">${esc(c.text)}</div>${c.reopen ? `<div class="ev-via" style="color:var(--danger);font-weight:700">↺ Çözülmedi bildirimi · çağrı yeniden açıldı</div>` : c.via ? `<div class="ev-via">${c.closing ? "Kapatma notu" : `“${esc(c.via)}” sırasında`}</div>` : ""}</div></div>`).join("") : `<p style="color:var(--muted);margin:0">Henüz yorum yok.</p>`}</div>`
       : `<div class="feed">${hist.length ? hist.map(histItem).join("") : `<p style="color:var(--muted);margin:0">Kayıt yok.</p>`}</div>`}
     </div>`);
   const ti = d.querySelector(".title-inp"); if(ti){ ti.style.height = "auto"; ti.style.height = ti.scrollHeight + "px"; }
@@ -2316,6 +2325,24 @@ function requesterProjectBox(t){
       : `<p class="hintline" style="margin:0">Proje adımları henüz planlanıyor.</p>`}
   </section>`;
 }
+function addBusinessDaysLocal(ts, n){
+  const days = (S.sla.hours && S.sla.hours.days && S.sla.hours.days.length) ? S.sla.hours.days : [1,2,3,4,5];
+  const d = new Date(ts); let c = 0, g = 0;
+  while(c < n && g++ < 400){ d.setDate(d.getDate() + 1); if(days.includes(d.getDay())) c++; }
+  return d.getTime();
+}
+function reopenInfo(t){
+  if(cat(t.status) !== "done" || t.resolution === "rejected" || blocked(t) || !t.resolvedAt) return null;
+  const until = t.reopenUntil || addBusinessDaysLocal(t.resolvedAt, S.sla.reopenDays || 5);
+  return {until, open: Date.now() <= until};
+}
+function reopenBox(t){
+  const r = reopenInfo(t); if(!r || t.reporter !== meRef()) return "";
+  const when = new Date(r.until).toLocaleString("tr-TR", {day:"numeric", month:"long", weekday:"long", hour:"2-digit", minute:"2-digit"});
+  return r.open
+    ? `<div class="reopen"><div><b>Sorunun çözülmedi mi?</b> ${when} tarihine kadar “Çözülmedi” diyerek çağrıyı yeniden açabilirsin. Çağrı destek ekibinin havuzuna geri düşer.</div><button class="btn sm danger" data-act="reopen" data-id="${t.id}">Çözülmedi</button></div>`
+    : `<div class="reopen off"><div>Çözülmedi bildirimi süresi ${when} tarihinde doldu. Sorun devam ediyorsa yeni bir talep açabilirsin.</div><button class="btn sm" disabled>Çözülmedi</button></div>`;
+}
 function followBox(t){
   const idx = S.wf.statuses.findIndex(s => s.id === t.status);
   if(pauseIds().has(t.status)){
@@ -2323,10 +2350,11 @@ function followBox(t){
     return `<div class="follow" style="border-color:var(--prog);background:var(--prog-soft)">${avatar(t.assignee,32)}<div><div><b>Destek ekibi senden yanıt bekliyor.</b> Aşağıdan yanıt yazdığında talebin otomatik olarak devam eder.</div>
       ${q ? `<div class="closing-note">${esc(q.text)}</div>` : ""}</div></div>`;
   }
-  const msg = cat(t.status) === "done" ? "Talebin sonuçlandı. Sorun devam ediyorsa aşağıdan mesaj yazabilirsin."
+  const msg = cat(t.status) === "done" ? "Talebin sonuçlandı."
     : t.assignee ? `${esc(personName(t.assignee))} talebinle ilgileniyor.` : "Talebin destek ekibine iletildi, bir personelin üstlenmesi bekleniyor.";
   const closing = cat(t.status) === "done" ? (t.comments||[]).filter(c => c.closing && !c.internal).pop() : null;
-  return `<div class="follow">${avatar(t.assignee,32)}<div><div>${msg}</div>${closing ? `<div class="closing-note">${esc(closing.text)}</div>` : ""}
+  const reo = (t.reopens || []).length && cat(t.status) !== "done" ? `<div class="hintline" style="margin-top:6px;color:var(--prog);font-weight:700">↺ Çözülmedi bildirimin alındı; çağrı destek ekibinde tekrar ele alınıyor.</div>` : "";
+  return `<div class="follow">${avatar(t.assignee,32)}<div><div>${msg}</div>${closing ? `<div class="closing-note">${esc(closing.text)}</div>` : ""}${reo}${reopenBox(t)}
     <div class="steps">${S.wf.statuses.map((s,i) => `<span class="${i===idx?"cur":i<idx?"past":""}">${esc(s.name)}</span>`).join("")}</div></div></div>`;
 }
 function histItem(h){
@@ -2468,6 +2496,18 @@ function renderDialog(force = true){
         ${imgs.length > 1 ? `<button class="btn sm" data-act="lb-nav" data-d="-1" aria-label="Önceki">‹</button><button class="btn sm" data-act="lb-nav" data-d="1" aria-label="Sonraki">›</button>` : ""}
         <a class="btn sm" href="/_blob/${at.id}" target="_blank" rel="noopener">Yeni sekmede aç</a><button class="btn sm" data-act="dlg-cancel">Kapat</button></div>
     </div>`;
+  } else if(dlg.kind === "reopen"){
+    const tk = S.tickets[dlg.ticketId]; if(!tk){ dlg = null; w.remove(); return; }
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt">
+      <div class="dl-h"><h3 id="dlgt">Çözülmedi</h3><p class="dl-sub"><span class="key">${esc(tk.key)}</span> · ${esc(tk.title)}</p></div>
+      <div class="dl-b">
+        <label class="fld"><span>Sorun neden çözülmedi? <span class="req">*</span></span><textarea class="desc" id="ro-text" style="min-height:110px" placeholder="Ne denedin, hâlâ ne oluyor? Hata mesajı varsa ekle.">${esc(dlg.text || "")}</textarea></label>
+        <p class="hintline" style="margin:0">Çağrı “Tekrar açıldı” durumuyla destek ekibinin havuzuna düşer ve müsait bir personel üstlenir. SLA süresi sıfırlanmaz, kaldığı yerden devam eder.</p>
+        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
+      </div>
+      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="ro-send">Gönder</button></div>
+    </div>`;
   } else if(dlg.kind === "pwchange"){
     html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(420px,calc(100% - 24px))">
@@ -2570,7 +2610,7 @@ function renderDialog(force = true){
   if(guardedSet(w, html, force)){
     const keep = focusedId && w.querySelector("#"+focusedId);
     if(keep) keep.focus();
-    else if(!dlg.focused){ const f = w.querySelector("#c-title, #u-name, #pwc-cur, #ap-note, #pj-name, #tk-title, #d-cmt, .dl-f .btn.primary"); if(f) f.focus(); }
+    else if(!dlg.focused){ const f = w.querySelector("#c-title, #u-name, #ro-text, #pwc-cur, #ap-note, #pj-name, #tk-title, #d-cmt, .dl-f .btn.primary"); if(f) f.focus(); }
     dlg.focused = true;
   }
 }
@@ -2834,6 +2874,15 @@ document.addEventListener("click", async e => {
       api("POST", `/users/${id}/invite`, {}).then(() => toast(`${u.email} adresine bağlantı gönderildi`)).catch(apiFail); break; }
     case "u-import": openImport(); break;
     case "me-menu": openMeMenu(el); break;
+    case "reopen": if(t){ dlg = {kind:"reopen", ticketId:t.id, text:"", error:""}; renderDialog(); } break;
+    case "ro-send": {
+      const txt = ($("#ro-text")?.value || "").trim(); dlg.text = txt;
+      if(!txt){ dlg.error = "Sorunun neden çözülmediğini yazmalısın."; renderDialog(); return; }
+      el.disabled = true;
+      try{ const r = await api("POST", `/tickets/${dlg.ticketId}/reopen`, {text:txt}); dlg = null; renderDialog(); putTicket(r.ticket); S.syncSince = Math.max(0, S.syncSince - 1000); syncNow(); toast("Çağrı yeniden açıldı ve destek ekibine iletildi."); }
+      catch(e){ el.disabled = false; dlg.error = e.message; renderDialog(); }
+      break;
+    }
     case "switch-tenant": $("#poplayer").innerHTML = ""; switchTenant(el.dataset.v); break;
     case "pw-change": $("#poplayer").innerHTML = ""; dlg = {kind:"pwchange", error:""}; renderDialog(); break;
     case "pwc-save": {
@@ -3062,6 +3111,7 @@ document.addEventListener("change", e => {
       if(hm(nh.start) >= hm(nh.end)){ el.value = cfg.hours[k]; return toast("Mesai bitişi başlangıçtan sonra olmalı.", true); }
       cfg.hours[k] = el.value;
     }
+    else if(a === "sla-reopen"){ const v = Math.round(+el.value); if(!(v >= 1 && v <= 30)){ el.value = cfg.reopenDays || 5; return toast("Süre 1 ile 30 iş günü arasında olmalı.", true); } cfg.reopenDays = v; }
     else if(a === "sla-day"){ const d = +el.dataset.d; cfg.hours.days = el.checked ? [...new Set([...cfg.hours.days, d])] : cfg.hours.days.filter(x => x !== d); }
     saveSla(cfg); toast("SLA ayarları kaydedildi"); return;
   }
