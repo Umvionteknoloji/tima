@@ -341,6 +341,15 @@ tr.inactive td:not(.acts){opacity:.55}
 
 /* login */
 body.locked .top, body.locked #filters, body.locked main{display:none}
+body.booting .login, body.booting .top, body.booting #filters, body.booting main{display:none !important}
+#bootScreen{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:var(--bg);z-index:100}
+body.booting #bootScreen{display:flex}
+.bs-in{display:flex;flex-direction:column;align-items:center;gap:14px}
+.bs-t{font-weight:600;color:var(--muted);font-size:15px}
+.bs-bar{width:160px;height:3px;border-radius:2px;background:var(--line);overflow:hidden;position:relative}
+.bs-bar i{position:absolute;left:-40%;top:0;bottom:0;width:40%;background:var(--accent);border-radius:2px;animation:bsl 1s ease-in-out infinite}
+@keyframes bsl{to{left:100%}}
+@media (prefers-reduced-motion:reduce){.bs-bar i{animation:none;left:0;width:100%;opacity:.4}}
 .login{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr)}
 body:not(.locked) .login{display:none}
 .login-art{background:var(--ink);color:var(--bg);padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
@@ -564,7 +573,8 @@ td.t{font-weight:500;max-width:420px}
 }
 </style>
 </head>
-<body class="locked">
+<body class="locked booting">
+<div id="bootScreen" aria-live="polite"><div class="bs-in"><span data-logo="44"></span><div class="bs-t" id="bootText">Yükleniyor…</div><div class="bs-bar"><i></i></div></div></div>
 <section class="login" aria-label="Giriş">
   <div class="login-art">
     <div class="brand"><span data-logo="40"></span><span class="wordmark">TIMA<small id="brand-sub">Talep ve iş takibi</small></span></div>
@@ -3245,6 +3255,9 @@ async function switchTenant(slug){
     const j = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(j.message || "Firmaya geçilemedi.");
     localStorage.setItem("tima-token:" + slug, j.token);
+    const f = (S.myTenants || []).find(x => x.slug === slug);
+    try{ sessionStorage.setItem("tima-switch", f ? f.name : slug); }catch(_){}
+    document.body.classList.add("booting"); $("#bootText").textContent = `${f ? f.name : slug} hesabına geçiliyor…`;
     location.href = "/" + slug;
   }catch(e){ toast(e.message, true); }
 }
@@ -3298,7 +3311,9 @@ function unlock(me){
   document.body.classList.remove("locked");
   renderAll();
 }
+function endBoot(){ document.body.classList.remove("booting"); }
 function lock(msg){
+  endBoot();
   S.open = null; dlg = null; pick = null; renderPicker();
   $("#layer").innerHTML = "";
   S.session = null; S.view = "board"; S.syncSince = 0; S.tickets = {}; S.users = {}; S.projects = {}; S.ptasks = {}; S.ready = false;
@@ -3391,12 +3406,21 @@ $("#nt-go").addEventListener("click", () => { const c = $("#nt-code").value.trim
 $("#nt-code").addEventListener("keydown", e => { if(e.key === "Enter") $("#nt-go").click(); });
 
 async function boot(){
-  if(!SLUG){ showLoginPanel("none"); $("#nt-msg").textContent = "Firma kodunu yazarak giriş ekranına geç."; return; }
-  try{ const r = await api("GET", "/public"); applyTenant(r.tenant); }
-  catch(e){ showLoginPanel("none"); $("#nt-msg").textContent = e.status === 404 ? `“${SLUG}” adında bir firma bulunamadı. Adresi kontrol et.` : e.message; $("#nt-code").value = ""; return; }
-  if(/^#parola=/.test(location.hash)){ setToken(null); showLoginPanel("pw"); setTimeout(() => $("#pw-1").focus(), 0); return; }
+  let sw = null; try{ sw = sessionStorage.getItem("tima-switch"); sessionStorage.removeItem("tima-switch"); }catch(_){}
+  if(sw) $("#bootText").textContent = `${sw} hesabına geçiliyor…`;
+  if(!SLUG){ endBoot(); showLoginPanel("none"); $("#nt-msg").textContent = "Firma kodunu yazarak giriş ekranına geç."; return; }
+  const resetLink = /^#parola=/.test(location.hash);
+  // Oturum varsa doğrudan uygulamaya geç; giriş ekranı yalnızca geçerli oturum yoksa görünür
+  const pub = api("GET", "/public").then(r => { applyTenant(r.tenant); return true; }).catch(e => e);
+  if(TOKEN && !resetLink){
+    await syncNow();
+    if(S.session){ endBoot(); return; }
+  }
+  const p = await pub;
+  endBoot();
+  if(p !== true){ showLoginPanel("none"); $("#nt-msg").textContent = p.status === 404 ? `“${SLUG}” adında bir firma bulunamadı. Adresi kontrol et.` : p.message; $("#nt-code").value = ""; return; }
+  if(resetLink){ setToken(null); showLoginPanel("pw"); setTimeout(() => $("#pw-1").focus(), 0); return; }
   showLoginPanel("login");
-  if(TOKEN) await syncNow();
   if(!S.session) setTimeout(() => $("#lg-user").focus(), 0);
 }
 // periyodik güncelleme: sekme görünürken 30 sn'de bir
