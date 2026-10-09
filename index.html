@@ -93,6 +93,10 @@ button{cursor:pointer}
 .reopen .btn{flex:none}
 .reotag{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--danger-soft);color:var(--danger);white-space:nowrap}
 .ta-grp{display:flex;gap:12px;flex-wrap:wrap}
+.autotag{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px;white-space:nowrap}
+.rot{margin:0;padding-left:20px;font-size:13.5px}
+.rot li{padding:1px 0}
+.rot li.next{font-weight:700}
 .aslist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:260px;overflow:auto}
 .asrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
 .asrow:first-child{border-top:0}
@@ -775,7 +779,7 @@ const RESOLUTIONS = [
   {id:"cannot", label:"Yeniden üretilemedi"},
   {id:"rejected", label:"Onaylanmadı", hidden:true}
 ];
-const DEFAULT_APPR = {types:{c_new_hw:true, c_new_sw:true, s_new_hw:true, s_opening:true}, fallback:"a:admin"};
+const DEFAULT_APPR = {types:{c_new_hw:true, c_new_sw:true, s_new_hw:true, s_opening:false}, fallback:null, approvers:{}};
 const CATS = {
   todo:{label:"Yapılacak", color:"var(--todo)"},
   inprogress:{label:"Sürüyor", color:"var(--prog)"},
@@ -970,7 +974,7 @@ async function loadTextPreview(){
 function visibleAtts(t){ return (t.attachments || []).filter(x => isStaff() || !x.internal); }
 
 /* ---------------- approvals ---------------- */
-function mergeAppr(x){ const d = clone(DEFAULT_APPR); if(x){ if(x.types) d.types = Object.assign({}, x.types); if("fallback" in x) d.fallback = x.fallback; } return d; }
+function mergeAppr(x){ const d = clone(DEFAULT_APPR); d.approvers = {}; if(x){ if(x.types) d.types = Object.assign({}, x.types); if("fallback" in x) d.fallback = x.fallback; if(x.approvers) d.approvers = Object.assign({}, x.approvers); } return d; }
 function needsApproval(typeK){ return !!(S.appr || DEFAULT_APPR).types[typeK]; }
 function blocked(t){ return !!(t && t.approval && t.approval.state !== "approved"); }
 function pendingAppr(t){ return !!(t && t.approval && t.approval.state === "pending"); }
@@ -978,7 +982,9 @@ function validApprover(ref){
   if(!ref || !ref.startsWith("a:")) return false;
   const u = account(ref.slice(2)); return !!(u && u.active && normRole(u.role) !== "agent");
 }
-function approverFor(acct){
+function approverFor(acct, typeK){
+  const ded = typeK && (S.appr || DEFAULT_APPR).approvers && (S.appr || DEFAULT_APPR).approvers[typeK];
+  if(validApprover(ded)) return ded;
   if(acct && validApprover(acct.approver) && acct.approver !== "a:" + acct.id) return acct.approver;
   const fb = (S.appr || DEFAULT_APPR).fallback;
   if(validApprover(fb)) return fb;
@@ -2072,6 +2078,7 @@ function renderAdmin(){
     ${accts.length === 1 ? `<p class="sub" style="margin:14px 0 0">Henüz ekip üyesi yok. İlk kullanıcıyı ekle; giriş bilgilerini kendisiyle paylaş.</p>` : ""}
   </section>
   ${renderRolesAdmin()}
+  ${renderAutoAssignAdmin()}
   ${renderApprAdmin()}
   ${renderSlaAdmin()}
   ${renderFormAdmin()}
@@ -2096,6 +2103,31 @@ function renderRolesAdmin(){
     </tbody></table></div>
   </section>`;
 }
+function rotationOf(typeK, roleId){
+  const pool = TYPES[typeK].pool;
+  return allAccounts().filter(u => u.active !== false && normRole(u.role) !== "requester" && (u.roleId ? u.roleId === roleId : normRole(u.role) === roleId)
+      && (normRole(u.role) === "admin" || agentPools(u).includes(pool)))
+    .sort((a,b) => (a.name || "").localeCompare(b.name || "", "tr") || a.id.localeCompare(b.id));
+}
+function renderAutoAssignAdmin(){
+  const ro = S.readOnly ? "disabled" : "", A = S.autoAssign || {};
+  const staffRoles = rolesList().filter(r => r.base !== "requester");
+  return `<section class="panel">
+    <h2>Otomatik atama</h2>
+    <p class="sub">Bir talep tipini bir role bağlarsan, o tipteki çağrılar havuzda beklemeden o roldeki kişilere <b>sırayla</b> atanır: 1., 2., 3. … son kişiden sonra yeniden 1. kişiye döner. Rolde tek kişi varsa hep ona gider. Onaya tabi taleplerde atama onaydan sonra yapılır; “Çözülmedi” ile yeniden açılan çağrı da sıradaki kişiye gider. Rolde uygun kimse yoksa çağrı havuza düşer.</p>
+    <div class="tablewrap"><table style="min-width:640px"><thead><tr><th>Havuz</th><th>Talep tipi</th><th>Atanacak rol</th><th>Sıra</th></tr></thead><tbody>
+      ${Object.entries(TYPES).map(([k,T]) => {
+        const rid = A[k] && A[k].roleId, mem = rid ? rotationOf(k, rid) : [];
+        const nextIdx = mem.length ? ((S.rr && S.rr[k]) || 0) % mem.length : -1;
+        return `<tr><td>${poolTag(T.pool)}</td><td>${esc(T.label)}</td>
+          <td><select class="inp" data-act="aa-role" data-k="${k}" ${ro}><option value="">Otomatik atama yok (havuza düşer)</option>${staffRoles.map(r => `<option value="${esc(r.id)}" ${rid === r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select></td>
+          <td>${!rid ? `<span class="hintline">—</span>` : mem.length ? `<ol class="rot">${mem.map((u,i) => `<li class="${i === nextIdx ? "next" : ""}">${esc(u.name)}${i === nextIdx ? ` <span class="autotag">sıradaki</span>` : ""}</li>`).join("")}</ol>`
+            : `<span class="hintline" style="color:var(--danger)">Bu rolde ${POOLS[T.pool].label} havuzunda çalışan kimse yok; çağrılar havuza düşer.</span>`}</td></tr>`;
+      }).join("")}
+    </tbody></table></div>
+    <p class="hintline" style="margin:8px 0 0">Sıra, roldeki kişilerin adına göre alfabetiktir. Kişi ekleyip çıkarınca sıra yeni listeyle devam eder.</p>
+  </section>`;
+}
 function saveRoles(list){ S.roles = list; renderAll(); putConfig("roles", list.map(r => ({id:r.id, name:r.name, base:r.base}))); }
 function renderApprAdmin(){
   const ro = S.readOnly ? "disabled" : "", A = S.appr || DEFAULT_APPR;
@@ -2104,11 +2136,12 @@ function renderApprAdmin(){
   const noAppr = reqs.filter(u => !validApprover(u.approver)).length;
   return `<section class="panel">
     <h2>Onay süreci</h2>
-    <p class="sub"><b>Kimler açabilir:</b> talep sahiplerinden hangi grupların bu tipi seçebileceğini belirler; destek ekibi ve yöneticiler her tipi açabilir. <b>Onay gerekli:</b> işaretli talep tipleri destek ekibine düşmeden önce talep sahibinin onaylayıcısına gider. Her talep sahibinin onaylayıcısı Kullanıcılar bölümünden belirlenir: mağazalar için bölge müdürü, merkez kullanıcıları için birim müdürü. Destek ekibinin açtığı talepler onaya gönderilmez.</p>
-    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Havuz</th><th>Talep tipi</th><th>Kimler açabilir</th><th>Onay gerekli</th></tr></thead><tbody>
+    <p class="sub"><b>Kimler açabilir:</b> talep sahiplerinden hangi grupların bu tipi seçebileceğini belirler; destek ekibi ve yöneticiler her tipi açabilir. <b>Onay gerekli:</b> işaretli talep tipleri destek ekibine düşmeden önce onaya gider. <b>Onaylayıcı:</b> bir kişi seçersen o tipteki tüm talepler doğrudan ona gider; “Talep sahibinin onaylayıcısı” bırakırsan kullanıcının kendi onaylayıcısına (yoksa varsayılan onaylayıcıya) gider. Her talep sahibinin onaylayıcısı Kullanıcılar bölümünden belirlenir: mağazalar için bölge müdürü, merkez kullanıcıları için birim müdürü. Destek ekibinin açtığı talepler onaya gönderilmez.</p>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Havuz</th><th>Talep tipi</th><th>Kimler açabilir</th><th>Onay gerekli</th><th>Onaylayıcı</th></tr></thead><tbody>
       ${Object.entries(TYPES).map(([k,T]) => `<tr><td>${poolTag(T.pool)}</td><td>${esc(T.label)}</td>
         <td><div class="ta-grp">${Object.entries(GROUPS).filter(([g,G]) => G.pools.includes(T.pool)).map(([g,G]) => { const a = typeAccess()[k]; const on = !Array.isArray(a) || a.includes(g);
-          return `<label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="ta-grp" data-k="${k}" data-g="${g}" ${on ? "checked" : ""} ${ro}> ${esc(G.label.replace(" kullanıcısı",""))}</label>`; }).join("")}</div></td><td><label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="apc-type" data-k="${k}" ${A.types[k] ? "checked" : ""} ${ro}> ${A.types[k] ? "Onaya tabi" : "Doğrudan destek ekibine"}</label></td></tr>`).join("")}
+          return `<label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="ta-grp" data-k="${k}" data-g="${g}" ${on ? "checked" : ""} ${ro}> ${esc(G.label.replace(" kullanıcısı",""))}</label>`; }).join("")}</div></td><td><label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="apc-type" data-k="${k}" ${A.types[k] ? "checked" : ""} ${ro}> ${A.types[k] ? "Onaya tabi" : "Doğrudan destek ekibine"}</label></td>
+        <td>${A.types[k] ? `<select class="inp" data-act="apc-appr" data-k="${k}" ${ro} style="min-width:200px"><option value="">Talep sahibinin onaylayıcısı</option>${elig.map(u => `<option value="a:${u.id}" ${(A.approvers||{})[k] === "a:"+u.id ? "selected" : ""}>${esc(u.name)}${normRole(u.role) === "admin" ? " · Yönetici" : ""}</option>`).join("")}</select>` : `<span class="hintline">—</span>`}</td></tr>`).join("")}
     </tbody></table></div>
     <div class="hours" style="margin-top:14px">
       <label class="fld" style="min-width:280px"><span>Varsayılan onaylayıcı</span><select class="inp" data-act="apc-fallback" ${ro}><option value="" ${A.fallback ? "" : "selected"}>Seçilmedi (ilk yönetici)</option>${elig.map(u => `<option value="a:${u.id}" ${A.fallback === "a:"+u.id ? "selected" : ""}>${esc(u.name)} · ${esc(normRole(u.role) === "admin" ? "Yönetici" : GROUPS[userGroup(u)].label)}</option>`).join("")}</select>
@@ -2376,7 +2409,7 @@ function renderDrawer(){
         <dt>Kategori</dt><dd>${staff ? `<select class="sel" data-act="f-category" data-id="${t.id}" aria-label="Kategori" ${fro}>
           <option value="">Kategorisiz</option>${S.cats.filter(c => c.active !== false || c.id === t.category).map(c => `<option value="${esc(c.id)}" ${c.id===t.category?"selected":""}>${esc(c.name)}${c.active === false ? " (pasif)" : ""}</option>`).join("")}
           ${t.category && !S.cats.some(c => c.id === t.category) ? `<option value="${esc(t.category)}" selected>Silinmiş kategori</option>` : ""}</select>` : `<b style="font-weight:600">${esc(catName(t.category))}</b>`}</dd>
-        <dt>${staff ? "Atanan" : "Destek sorumlusu"}</dt><dd><button class="fbtn" data-act="pick-assignee" data-id="${t.id}" ${fro}>${avatar(t.assignee,22)}${esc(t.assignee || staff ? personName(t.assignee) : "Henüz üstlenilmedi")}</button>
+        <dt>${staff ? "Atanan" : "Destek sorumlusu"}</dt><dd><button class="fbtn" data-act="pick-assignee" data-id="${t.id}" ${fro}>${avatar(t.assignee,22)}${esc(t.assignee || staff ? personName(t.assignee) : "Henüz üstlenilmedi")}</button>${staff && t.assignee && (() => { const h = (t.history||[]).filter(x => x.field === "assignee").pop(); return h && h.by === "n:TIMA otomatik atama" && h.to === t.assignee; })() ? `<span class="autotag" title="Talep tipi kuralına göre sırayla atandı">otomatik atandı</span>` : ""}
           ${!t.assignee && !S.readOnly && staff ? `<button class="btn sm ghost" data-act="assign-me" data-id="${t.id}">Bana ata</button>` : ""}</dd>
         <dt>Öncelik</dt><dd><select class="sel" data-act="f-priority" data-id="${t.id}" aria-label="Öncelik" ${fro}>${PRIS.map(p => `<option value="${p.id}" ${p.id===t.priority?"selected":""}>${p.sym}  ${p.label}</option>`).join("")}</select></dd>
         ${staff ? `<dt>Proje</dt><dd class="projbox">${(() => {
@@ -2543,7 +2576,7 @@ function renderDialog(force = true){
         <label class="fld"><span>Kategori ${isRequester() ? `<span class="req">*</span>` : `<span style="color:var(--muted);font-weight:400">(isteğe bağlı)</span>`}</span>
           ${activeCats().length ? `<select class="inp" id="c-cat"><option value="">${isRequester() ? "Kategori seç" : "Kategorisiz"}</option>${activeCats().map(c => `<option value="${esc(c.id)}" ${c.id===dlg.category?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`
             : `<div class="notice">Henüz kategori tanımlanmamış.${isAdmin() ? " Yönetim sekmesinden ekleyebilirsin." : isRequester() ? " Talep açabilmen için yöneticinin kategori eklemesi gerekiyor." : ""}</div>`}</label>
-        ${!isStaff() && dlg.type && needsApproval(dlg.type) ? `<div class="notice">Bu talep tipi onaya tabidir. Talebin önce <b>${esc(personName(approverFor(meAcct())))}</b> tarafından onaylanacak, ardından destek ekibine iletilecek.</div>` : ""}
+        ${!isStaff() && dlg.type && needsApproval(dlg.type) ? `<div class="notice">Bu talep tipi onaya tabidir. Talebin önce <b>${esc(personName(approverFor(meAcct(), dlg.type)))}</b> tarafından onaylanacak, ardından destek ekibine iletilecek.</div>` : ""}
         <div class="row2">
           <label class="fld"><span>Öncelik</span><select class="inp" id="c-pri">${PRIS.map(p => `<option value="${p.id}" ${p.id===dlg.priority?"selected":""}>${p.sym}  ${p.label}</option>`).join("")}</select></label>
         </div>
@@ -3282,6 +3315,13 @@ document.addEventListener("change", e => {
     });
     return;
   }
+  if(a === "aa-role"){
+    if(!isAdmin()) return;
+    const A = clone(S.autoAssign || {}), k = el.dataset.k;
+    if(el.value) A[k] = {roleId: el.value}; else delete A[k];
+    S.autoAssign = A; renderAll(); putConfig("autoAssign", A);
+    toast(el.value ? `${TYPES[k].label} → ${rolesList().find(r => r.id === el.value)?.name}: sırayla atanacak` : `${TYPES[k].label}: otomatik atama kapatıldı`); return;
+  }
   if(a === "rl-name" || a === "rl-base"){
     if(!isAdmin()) return;
     const list = rolesList().map(r => ({...r}));
@@ -3304,9 +3344,13 @@ document.addEventListener("change", e => {
     if(all.every(g => cur.includes(g))) delete ta[k]; else ta[k] = cur;
     S.typeAccess = ta; renderAll(); putConfig("typeAccess", ta); toast("Kaydedildi"); return;
   }
-  if(a === "apc-type" || a === "apc-fallback"){
-    const cfg = clone(S.appr || DEFAULT_APPR);
-    if(a === "apc-type") cfg.types[el.dataset.k] = el.checked; else cfg.fallback = el.value || null;
+  if(a === "apc-type" || a === "apc-fallback" || a === "apc-appr"){
+    const cfg = clone(S.appr || DEFAULT_APPR); cfg.approvers = cfg.approvers || {};
+    if(a === "apc-type") cfg.types[el.dataset.k] = el.checked;
+    else if(a === "apc-appr"){ if(el.value) cfg.approvers[el.dataset.k] = el.value; else delete cfg.approvers[el.dataset.k];
+      const pend = Object.values(S.tickets).filter(t => pendingAppr(t) && typeKey(t.type) === el.dataset.k).length;
+      if(pend) setTimeout(() => toast(`Yeni talepler ${el.value ? personName(el.value) : "talep sahibinin onaylayıcısına"} gidecek. Şu an onay bekleyen ${pend} talep eski onaylayıcıda kalır; yöneticiler Onaylar ekranından karar verebilir.`), 50); }
+    else cfg.fallback = el.value || null;
     S.appr = cfg; renderAll(); putConfig("approval", cfg);
     toast("Onay ayarları kaydedildi"); return;
   }
@@ -3640,6 +3684,7 @@ async function syncNow(){
     if(d.full){ S.tickets = {}; S.users = {}; S.projects = {}; S.ptasks = {}; }
     d.tickets.forEach(t => S.tickets[t.id] = t);
     d.users.forEach(u => S.users[u.id] = u);
+    if(d.rr) S.rr = d.rr;
     (d.projects || []).forEach(p => S.projects[p.id] = p);
     (d.ptasks || []).forEach(k => S.ptasks[k.id] = k);
     (d.deleted || []).forEach(x => { ({ticket:S.tickets, user:S.users, project:S.projects, ptask:S.ptasks}[x.kind] || {})[x.id] && delete ({ticket:S.tickets, user:S.users, project:S.projects, ptask:S.ptasks}[x.kind])[x.id]; });
@@ -3652,6 +3697,7 @@ async function syncNow(){
     if(c.categories) S.cats = c.categories;
     if(c.typeAccess) S.typeAccess = c.typeAccess;
     if(c.roles) S.roles = c.roles;
+    if(c.autoAssign) S.autoAssign = c.autoAssign;
     if(d.tenant) applyTenant(d.tenant);
     S.syncSince = d.serverTime; S.lastSync = Date.now();
     const rb = $("#refreshBtn"); if(rb) rb.title = "Yenile · son güncelleme " + new Date().toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
