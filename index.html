@@ -270,6 +270,23 @@ table.slat td{white-space:nowrap}
 .att.file.mini{width:auto;max-width:240px}
 .att.file.mini .att-f{padding:6px 8px}
 .att.file.mini .att-ic{width:28px;height:32px;font-size:9.5px}
+a.btn{text-decoration:none;color:inherit;display:inline-flex;align-items:center}
+a.btn.primary{color:var(--accent-ink)}
+.preview{position:fixed;z-index:50;inset:16px;display:flex;flex-direction:column;gap:10px;max-width:1200px;margin:0 auto}
+.pv-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border-radius:10px;padding:8px 10px}
+.pv-name{display:flex;flex-direction:column;min-width:0;max-width:50%}
+.pv-name b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-name small{color:var(--muted);font-size:12px}
+.pv-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pv-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;border-radius:10px;overflow:hidden}
+.pv-body img{max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:6px}
+.pv-body video{max-width:100%;max-height:100%;background:#000;border-radius:6px}
+.pv-body iframe{width:100%;height:100%;border:0;background:#fff;border-radius:6px}
+.pv-body pre{width:100%;height:100%;margin:0;overflow:auto;background:var(--surface);color:var(--ink);padding:16px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;border-radius:6px}
+.pv-none{background:var(--surface);border-radius:10px;padding:28px 34px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;max-width:420px}
+.pv-none p{margin:0}
+button.att-f{border:0;background:transparent;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.drawer.dropping::after,.dialog.dropping::after{content:"Dosyaları buraya bırak";position:absolute;inset:8px;border:2.5px dashed var(--accent);border-radius:12px;background:color-mix(in srgb,var(--accent-soft) 88%,transparent);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--accent);z-index:5;pointer-events:none}
 .lightbox{position:fixed;z-index:50;inset:24px;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;pointer-events:none}
 .lightbox img{max-width:100%;max-height:calc(100% - 60px);object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5);pointer-events:auto;background:#fff}
 .lb-bar{display:flex;gap:8px;align-items:center;width:min(900px,100%);color:#fff;pointer-events:auto}
@@ -885,15 +902,30 @@ function attachmentsView(t, compact){
       </div>` : !list.length ? `<p class="hintline" style="margin:0">Ek yok.</p>` : ""}`;
 }
 function attItem(t, a, mini){
-  const url = a.url || "#", k = attKind(a);
+  const url = a.url || "", k = attKind(a);
   const meta = `${esc(personName(a.by))} · ${ago(a.at)} · ${fmtSize(a.size || 0)}`;
   const del = !mini && canDeleteAtt(t, a) ? `<button class="att-del" data-act="att-del" data-id="${t.id}" data-a="${a.id}" aria-label="${esc(a.name)} ekini sil" title="Sil">✕</button>` : "";
   const tag = a.internal ? `<span class="int-tag">Dahili</span>` : "";
-  if(k === "image") return `<figure class="att ${mini ? "mini" : ""}"><button class="att-th" data-act="att-view" data-id="${t.id}" data-a="${a.id}" aria-label="${esc(a.name)} önizle"><img src="${url}" alt="${esc(a.name)}" loading="lazy"></button>${mini ? "" : `<figcaption><span class="att-n" title="${esc(a.name)}">${esc(a.name)}</span>${tag}<small>${meta}</small></figcaption>`}${del}</figure>`;
-  if(k === "video" && !mini) return `<figure class="att"><video src="${url}" controls preload="metadata"></video><figcaption><span class="att-n" title="${esc(a.name)}">${esc(a.name)}</span>${tag}<small>${meta}</small></figcaption>${del}</figure>`;
+  const open = `data-act="att-view" data-id="${t.id}" data-a="${a.id}" aria-label="${esc(a.name)} önizle" title="Önizle"`;
+  if(k === "image") return `<figure class="att ${mini ? "mini" : ""}"><button class="att-th" ${open}><img src="${esc(url)}" alt="${esc(a.name)}" loading="lazy"></button>${mini ? "" : `<figcaption><span class="att-n" title="${esc(a.name)}">${esc(a.name)}</span>${tag}<small>${meta}</small></figcaption>`}${del}</figure>`;
   const ic = k === "pdf" ? "PDF" : k === "video" ? "▶" : (a.name.split(".").pop() || "DOSYA").toUpperCase().slice(0,4);
-  return `<figure class="att file ${mini ? "mini" : ""}"><a class="att-f" href="${url}" target="_blank" rel="noopener"><span class="att-ic ${k}">${esc(ic)}</span><span class="att-fn"><span class="att-n" title="${esc(a.name)}">${esc(a.name)}</span>${mini ? "" : `<small>${meta}</small>`}</span></a>${mini ? "" : tag}${del}</figure>`;
+  return `<figure class="att file ${mini ? "mini" : ""}"><button class="att-f" ${open}><span class="att-ic ${k}">${esc(ic)}</span><span class="att-fn"><span class="att-n" title="${esc(a.name)}">${esc(a.name)}</span>${mini ? "" : `<small>${meta}</small>`}</span></button>${mini ? "" : tag}${del}</figure>`;
 }
+function previewKind(a){
+  const k = attKind(a), ext = (a.name.split(".").pop() || "").toLowerCase();
+  if(k === "image" && ext !== "heic") return "image";
+  if(k === "pdf" || k === "video") return k;
+  if(["text/plain","text/csv","application/json"].includes(a.type) || ["txt","log","csv","json"].includes(ext)) return "text";
+  return "none";
+}
+async function loadTextPreview(){
+  const pre = $("#pv-text"); if(!pre || pre.dataset.loaded || !dlg) return;
+  const tk = S.tickets[dlg.ticketId], at = tk && visibleAtts(tk).find(x => x.id === dlg.att); if(!at) return;
+  pre.dataset.loaded = "1";
+  try{ const r = await fetch(at.url); if(!r.ok) throw 0; const txt = await r.text(); pre.textContent = txt.length > 300000 ? txt.slice(0, 300000) + "\n\n… (dosyanın devamı için İndir)" : txt; }
+  catch(e){ pre.textContent = "Dosya okunamadı. “Yeni sekmede aç” ya da “İndir” ile deneyebilirsin."; }
+}
+function visibleAtts(t){ return (t.attachments || []).filter(x => isStaff() || !x.internal); }
 
 /* ---------------- approvals ---------------- */
 function mergeAppr(x){ const d = clone(DEFAULT_APPR); if(x){ if(x.types) d.types = Object.assign({}, x.types); if("fallback" in x) d.fallback = x.fallback; } return d; }
@@ -2485,58 +2517,24 @@ function renderDialog(force = true){
       </div>
       <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="u-save">${edit ? "Değişiklikleri kaydet" : "Kullanıcıyı ekle"}</button></div>
     </div>`;
-  } else if(dlg.kind === "image"){
-    const tk = S.tickets[dlg.ticketId], at = tk && (tk.attachments||[]).find(x => x.id === dlg.att);
+  } else if(dlg.kind === "preview"){
+    const tk = S.tickets[dlg.ticketId], list = tk ? visibleAtts(tk) : [], at = list.find(x => x.id === dlg.att);
     if(!at){ dlg = null; w.remove(); return; }
-    const imgs = (tk.attachments||[]).filter(x => attKind(x) === "image" && (isStaff() || !x.internal)), i = imgs.findIndex(x => x.id === at.id);
-    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49;background:rgba(10,12,11,.8)"></div>
-    <div class="lightbox" role="dialog" aria-modal="true" aria-label="${esc(at.name)}">
-      <img src="/_blob/${at.id}" alt="${esc(at.name)}">
-      <div class="lb-bar"><span class="att-n">${esc(at.name)}</span><span class="vis" style="color:#c9cfcb">${i+1}/${imgs.length}</span><span class="spacer"></span>
-        ${imgs.length > 1 ? `<button class="btn sm" data-act="lb-nav" data-d="-1" aria-label="Önceki">‹</button><button class="btn sm" data-act="lb-nav" data-d="1" aria-label="Sonraki">›</button>` : ""}
-        <a class="btn sm" href="/_blob/${at.id}" target="_blank" rel="noopener">Yeni sekmede aç</a><button class="btn sm" data-act="dlg-cancel">Kapat</button></div>
-    </div>`;
-  } else if(dlg.kind === "reopen"){
-    const tk = S.tickets[dlg.ticketId]; if(!tk){ dlg = null; w.remove(); return; }
-    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt">
-      <div class="dl-h"><h3 id="dlgt">Çözülmedi</h3><p class="dl-sub"><span class="key">${esc(tk.key)}</span> · ${esc(tk.title)}</p></div>
-      <div class="dl-b">
-        <label class="fld"><span>Sorun neden çözülmedi? <span class="req">*</span></span><textarea class="desc" id="ro-text" style="min-height:110px" placeholder="Ne denedin, hâlâ ne oluyor? Hata mesajı varsa ekle.">${esc(dlg.text || "")}</textarea></label>
-        <p class="hintline" style="margin:0">Çağrı “Tekrar açıldı” durumuyla destek ekibinin havuzuna düşer ve müsait bir personel üstlenir. SLA süresi sıfırlanmaz, kaldığı yerden devam eder.</p>
-        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
-      </div>
-      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="ro-send">Gönder</button></div>
-    </div>`;
-  } else if(dlg.kind === "pwchange"){
-    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(420px,calc(100% - 24px))">
-      <div class="dl-h"><h3 id="dlgt">Parolamı değiştir</h3>${(S.myTenants||[]).length > 1 ? `<p class="dl-sub">Bu hesap ${S.myTenants.length} firmada ortak kullanılıyor; yeni parola hepsinde geçerli olur.</p>` : ""}</div>
-      <div class="dl-b">
-        <label class="fld"><span>Mevcut parola</span><input class="inp" id="pwc-cur" type="password" autocomplete="current-password"></label>
-        <label class="fld"><span>Yeni parola</span><input class="inp" id="pwc-1" type="password" autocomplete="new-password"><small class="hintline">En az 8 karakter.</small></label>
-        <label class="fld"><span>Yeni parola (tekrar)</span><input class="inp" id="pwc-2" type="password" autocomplete="new-password"></label>
-        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
-      </div>
-      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="pwc-save">Parolayı değiştir</button></div>
-    </div>`;
-  } else if(dlg.kind === "import"){
-    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(620px,calc(100% - 24px))">
-      <div class="dl-h"><h3 id="dlgt">Excel'den kullanıcı aktar</h3><p class="dl-sub">TIMA kullanıcı aktarım şablonunu kullan (<a href="/TIMA_kullanici_aktarim_sablonu.xlsx" download>örnek şablonu indir</a>). Dosyadaki “Kullanıcılar” sayfası okunur; parola yazılmaz, her kullanıcıya e-postayla parola belirleme bağlantısı gider. Sistemde zaten olan kişiler hatalı satır olarak listelenir; “hatalı satırları atla” ile yalnızca yeniler aktarılır.</p></div>
-      <div class="dl-b">
-        ${dlg.stage === "pick" ? `<label class="btn" style="cursor:pointer;align-self:flex-start">Excel dosyası seç<input type="file" accept=".xlsx,.xls" id="imp-file" class="sr"></label>
-          ${dlg.loading ? `<p class="hintline">Dosya okunuyor…</p>` : ""}` : ""}
-        ${dlg.stage === "review" ? `<p style="margin:0"><b>${dlg.rows.length}</b> satır okundu${dlg.fileName ? ` · ${esc(dlg.fileName)}` : ""}.</p>
-          ${dlg.errors && dlg.errors.length ? `<div class="notice" style="background:var(--danger-soft)"><b>${dlg.errors.length} satırda sorun var:</b><ul style="margin:6px 0 0;padding-left:18px">${dlg.errors.slice(0,30).map(x => `<li>${x.row ? `Satır ${x.row}: ` : ""}${esc(x.error)}</li>`).join("")}</ul>${dlg.errors.length > 30 ? `<p class="hintline">… ve ${dlg.errors.length - 30} sorun daha</p>` : ""}</div>` : `<p class="hintline" style="margin:0">Aktarmaya hazır.</p>`}
-          <label class="chk" style="color:var(--ink)"><input type="checkbox" id="imp-invite" ${dlg.invite ? "checked" : ""}> Parola belirleme bağlantısını e-postayla gönder</label>
-          <p class="hintline" style="margin:0">Resend ücretsiz planında günde 100 e-posta sınırı vardır. Çok sayıda kullanıcıyı aktarıyorsan davetleri günlere yay ya da bu kutuyu kaldırıp daha sonra kullanıcı listesinden tek tek gönder.</p>` : ""}
-        ${dlg.stage === "done" ? `<p style="margin:0"><b>${dlg.result.created}</b> kullanıcı eklendi${dlg.result.invited ? `, <b>${dlg.result.invited}</b> kişiye davet gönderildi` : ""}.</p>
-          ${(dlg.result.warnings||[]).length ? `<div class="notice"><ul style="margin:0;padding-left:18px">${dlg.result.warnings.map(x => `<li>${x.row ? `Satır ${x.row}: ` : ""}${esc(x.error)}</li>`).join("")}</ul></div>` : ""}` : ""}
-        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
-      </div>
-      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">${dlg.stage === "done" ? "Kapat" : "Vazgeç"}</button>
-        ${dlg.stage === "review" ? (dlg.errors && dlg.errors.length ? `<button class="btn" data-act="imp-skip" ${dlg.busy ? "disabled" : ""}>Hatalı satırları atla, kalanları aktar</button>` : `<button class="btn primary" data-act="imp-run" ${dlg.busy ? "disabled" : ""}>Aktar</button>`) : ""}</div>
+    const i = list.findIndex(x => x.id === at.id), pk = previewKind(at), url = at.url || "";
+    const body = pk === "image" ? `<img src="${esc(url)}" alt="${esc(at.name)}">`
+      : pk === "pdf" ? `<iframe src="${esc(url)}" title="${esc(at.name)}"></iframe>`
+      : pk === "video" ? `<video src="${esc(url)}" controls autoplay></video>`
+      : pk === "text" ? `<pre id="pv-text">Yükleniyor…</pre>`
+      : `<div class="pv-none"><span class="att-ic ${attKind(at)}" style="width:64px;height:74px;font-size:15px">${esc((at.name.split(".").pop() || "DOSYA").toUpperCase().slice(0,4))}</span><p><b>${esc(at.name)}</b></p><p class="hintline">Bu dosya türü tarayıcıda önizlenemiyor. İndirip bilgisayarındaki programla açabilirsin.</p><a class="btn primary" href="${esc(url)}&dl=1">İndir</a></div>`;
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49;background:rgba(10,12,11,.82)"></div>
+    <div class="preview" role="dialog" aria-modal="true" aria-label="${esc(at.name)} önizleme">
+      <div class="pv-bar"><span class="pv-name"><b>${esc(at.name)}</b><small>${esc(personName(at.by))} · ${ago(at.at)} · ${fmtSize(at.size || 0)}${at.internal ? " · dahili" : ""}</small></span>
+        <span class="spacer"></span>
+        ${list.length > 1 ? `<span class="pv-count">${i+1} / ${list.length}</span><button class="btn sm" data-act="pv-nav" data-d="-1" aria-label="Önceki">‹</button><button class="btn sm" data-act="pv-nav" data-d="1" aria-label="Sonraki">›</button>` : ""}
+        <a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener">Yeni sekmede aç</a>
+        <a class="btn sm" href="${esc(url)}&dl=1">İndir</a>
+        <button class="btn sm" data-act="dlg-cancel" aria-label="Kapat">✕</button></div>
+      <div class="pv-body pv-${pk}">${body}</div>
     </div>`;
   } else if(dlg.kind === "approve"){
     const t = S.tickets[dlg.ticketId]; if(!t){ dlg = null; w.remove(); return; }
@@ -2606,6 +2604,7 @@ function renderDialog(force = true){
       <div class="dl-f" style="border-top:0"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="dlg-confirm" style="${dlg.danger?"background:var(--danger);border-color:var(--danger);color:#fff":""}">${esc(dlg.ok)}</button></div>
     </div>`;
   }
+  if(dlg.kind === "preview") setTimeout(loadTextPreview, 0);
   const focusedId = document.activeElement && w.contains(document.activeElement) ? document.activeElement.id : null;
   if(guardedSet(w, html, force)){
     const keep = focusedId && w.querySelector("#"+focusedId);
@@ -2707,7 +2706,8 @@ document.addEventListener("click", async e => {
     case "logout": { $("#poplayer").innerHTML = ""; const t0 = TOKEN; setToken(null); lock(); if(t0) fetch(API_BASE + "/" + SLUG + "/logout", {method:"POST", headers:{Authorization:"Bearer " + t0}}).catch(() => {}); break; }
     case "dperiod": S.dperiod = el.dataset.v; renderAll(); break;
     case "dpool": S.dpool = el.dataset.v; renderAll(); break;
-    case "att-view": { const tk = S.tickets[id], at = tk && (tk.attachments||[]).find(x => x.id === el.dataset.a); if(at){ dlg = {kind:"image", ticketId:id, att:at.id}; renderDialog(); } break; }
+    case "att-view": { const tk = S.tickets[id], at = tk && visibleAtts(tk).find(x => x.id === el.dataset.a); if(at){ dlg = {kind:"preview", ticketId:id, att:at.id}; renderDialog(); } break; }
+    case "pv-nav": { const tk = S.tickets[dlg.ticketId], list = visibleAtts(tk), i = list.findIndex(x => x.id === dlg.att); const n = list[(i + +el.dataset.d + list.length) % list.length]; if(n){ dlg.att = n.id; renderDialog(); } break; }
     case "att-del": {
       const tk = S.tickets[id], at = tk && (tk.attachments||[]).find(x => x.id === el.dataset.a); if(!at || !canDeleteAtt(tk, at)) return;
       dlg = {kind:"confirm", title:`“${at.name}” silinsin mi?`, text:"Dosya kalıcı olarak silinir.", ok:"Eki sil", danger:true, run: async () => {
@@ -2941,7 +2941,8 @@ document.addEventListener("click", async e => {
     case "create":
       if(S.readOnly) return toast("Bu panoda talep oluşturma iznin yok.", true);
       dlg = {kind:"create", pool:createPools()[0], title:"", type:null, priority:"medium", assignee:null, category:"", description:"", error:""}; renderDialog(); break;
-    case "open": if(dragId) return; S.mvSel = ""; S.open = id; S.tab = "comments"; renderDrawer(); setTimeout(() => $(".drawer .icon-btn[data-act=close]")?.focus(), 0); break;
+    case "open": if(dragId) return; S.mvSel = ""; S.open = id; S.tab = "comments"; renderDrawer(); setTimeout(() => $(".drawer .icon-btn[data-act=close]")?.focus(), 0);
+      api("GET", `/tickets/${id}`).then(r => putTicket(r.ticket)).catch(() => {}); break;
     case "close": S.open = null; renderDrawer(); break;
     case "subtab": S.tab = el.dataset.v; renderDrawer(); break;
     case "do-tr": { const tr = S.wf.transitions.find(x => x.id === el.dataset.tr); if(t && tr) startTransition(t, tr); break; }
@@ -3160,7 +3161,7 @@ $("#ftype").addEventListener("change", e => { S.type = e.target.value; renderAll
 $("#fmine").addEventListener("change", e => { S.mine = e.target.checked; renderAll(); });
 $("#fcat").addEventListener("change", e => { S.fcat = e.target.value; renderAll(); });
 document.addEventListener("keydown", e => {
-  if(dlg && dlg.kind === "image" && (e.key === "ArrowRight" || e.key === "ArrowLeft")){ $(`[data-act=lb-nav][data-d="${e.key === "ArrowRight" ? 1 : -1}"]`)?.click(); }
+  if(dlg && dlg.kind === "preview" && (e.key === "ArrowRight" || e.key === "ArrowLeft")){ $(`[data-act=pv-nav][data-d="${e.key === "ArrowRight" ? 1 : -1}"]`)?.click(); }
   if((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".kpi[role=button]")){ e.preventDefault(); e.target.click(); }
   if(e.key === "Enter" && e.target.id === "t-new"){ e.preventDefault(); $("[data-act=t-add]")?.click(); }
   if(e.key === "Enter" && e.target.id === "tpt-new"){ e.preventDefault(); $("[data-act=tpt-add]")?.click(); }
@@ -3223,17 +3224,30 @@ document.addEventListener("drop", e => {
   startMove(t, to);
 });
 window.addEventListener("resize", () => { if(pick) renderPicker(); });
-// drop files on an attachment zone
+// dosya sürükle-bırak: açık çağrının tamamı ve talep oluşturma penceresi dosya kabul eder
+const hasFiles = e => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files"));
+function dropTarget(e){
+  if(dlg && dlg.kind === "create"){ const d = e.target.closest && e.target.closest(".dialog"); return d ? {el:d, tid:"new"} : null; }
+  const dr = e.target.closest && e.target.closest(".drawer");
+  if(dr && !dlg && S.open && S.tickets[S.open] && canAttach(S.tickets[S.open])) return {el:dr, tid:S.open};
+  return null;
+}
+let dropEl = null;
+function setDrop(el){ if(dropEl && dropEl !== el) dropEl.classList.remove("dropping"); dropEl = el; if(el) el.classList.add("dropping"); }
 document.addEventListener("dragover", e => {
-  const z = e.target.closest && e.target.closest(".att-drop"); if(!z || !e.dataTransfer || ![...(e.dataTransfer.types||[])].includes("Files")) return;
-  e.preventDefault(); z.classList.add("over");
+  if(!hasFiles(e)) return;
+  e.preventDefault();                                   // dosya sayfaya bırakılınca tarayıcı sayfadan çıkmasın
+  const t = dropTarget(e);
+  e.dataTransfer.dropEffect = t ? "copy" : "none";
+  setDrop(t ? t.el : null);
 });
-document.addEventListener("dragleave", e => { const z = e.target.closest && e.target.closest(".att-drop"); if(z) z.classList.remove("over"); });
+document.addEventListener("dragleave", e => { if(hasFiles(e) && !e.relatedTarget) setDrop(null); });
 document.addEventListener("drop", e => {
-  const z = e.target.closest && e.target.closest(".att-drop"); if(!z || !e.dataTransfer || !e.dataTransfer.files.length) return;
-  e.preventDefault(); z.classList.remove("over");
-  if(z.dataset.tid === "new"){ if(dlg && dlg.kind === "create"){ captureDialog(); dlg.files = [...(dlg.files||[]), ...e.dataTransfer.files]; renderDialog(); } return; }
-  uploadFiles(e.dataTransfer.files, z.dataset.tid, !!$("#att-int")?.checked);
+  if(!hasFiles(e)) return;
+  e.preventDefault(); setDrop(null);
+  const t = dropTarget(e); if(!t || !e.dataTransfer.files.length) return;
+  if(t.tid === "new"){ captureDialog(); dlg.files = [...(dlg.files||[]), ...e.dataTransfer.files]; renderDialog(); toast(`${e.dataTransfer.files.length} dosya eklendi`); return; }
+  uploadFiles(e.dataTransfer.files, t.tid, !!$("#att-int")?.checked);
 });
 // paste screenshots straight into an open call or the create dialog
 document.addEventListener("paste", e => {
