@@ -99,6 +99,8 @@ button{cursor:pointer}
 .rot li.next{font-weight:700}
 .contact a{color:var(--accent);text-decoration:none;font-weight:600}
 .contact a:hover{text-decoration:underline}
+.ho-h{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.ho-d{display:flex;gap:8px;flex-wrap:wrap;font-size:12.5px}
 .aslist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:260px;overflow:auto}
 .asrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
 .asrow:first-child{border-top:0}
@@ -740,7 +742,12 @@ async function api(method, path, body, raw){
 function setToken(t){ TOKEN = t; try{ t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); }catch(e){} }
 function apiFail(e){ if(e && e.status === 401) return; console.error(e); toast(e && e.message || "İşlem yapılamadı.", true); }
 // sunucudan dönen çağrıyı yerel listeye işle
-function putTicket(t){ if(t){ S.tickets[t.id] = t; renderAll(); } return t; }
+function putTicket(t){
+  if(t){ S.tickets[t.id] = t; renderAll();
+    // sunucu iş akışına yeni bir durum eklediyse (ör. devir durumu) ayarları hemen çek
+    if(!S.wf.statuses.some(x => x.id === t.status)) syncNow(); }
+  return t;
+}
 
 /* ---------------- constants ---------------- */
 const POOLS = {
@@ -1163,6 +1170,7 @@ function pauseIntervals(t, until){
   });
   if(start != null && ps.has(t.status)) out.push([start, until]);
   (t.reopens || []).forEach(r => { if(r.closedAt && r.reopenedAt) out.push([r.closedAt, r.reopenedAt]); });
+  (t.handovers || []).forEach(h => { if(h.outcome === "returned" && h.at && h.endAt) out.push([h.at, h.endAt]); });
   return out;
 }
 function slaSpan(t, win, from, to, pauses){
@@ -1186,9 +1194,10 @@ function slaMetrics(t){
     const replied = (t.comments||[]).find(c => !c.internal && !c.approval && c.by !== t.reporter);
     const cand = [moved, replied && replied.at].filter(Boolean); respAt = cand.length ? Math.min(...cand) : null;
   }
-  const done = cat(t.status) === "done";
+  // devredilen çağrıda destek tarafı devir anında tamamlanmış sayılır
+  const done = cat(t.status) === "done" || !!t.handover;
   const method = t.method || "remote";
-  const resolvedAt = done && t.resolvedAt ? t.resolvedAt : null;
+  const resolvedAt = t.handover ? t.handover.at : done && t.resolvedAt ? t.resolvedAt : null;
   const end = resolvedAt || now;
   const pauses = pauseIntervals(t, end);
   const span = to => slaSpan(t, win, c0, to, pauses);
@@ -1203,8 +1212,18 @@ function slaMetrics(t){
     // time spent so far on targets that are still open (null when already met or the call is closed)
     liveClaim: !claimedAt && !done ? span(now) : null,
     liveResponse: !respAt && !done ? span(now) : null,
-    liveResolve: !done ? span(now) : null};
+    liveResolve: !done ? span(now) : null, handedOver: !!t.handover};
 }
+// devir hedefi (ör. depo gönderimi): mesai saatleriyle
+function handoverRule(roleId){ return (S.handover || []).find(r => r.roleId === roleId); }
+function handoverMetric(t){
+  const h = t.handover; if(!h) return null;
+  const hrs = h.hours || t.slaHours || S.sla.hours;
+  const el = bizMs(h.at, h.doneAt || Date.now(), hrs), lim = h.targetMin * 60000;
+  const rr = rolesList().find(r => r.id === h.roleId);
+  return {elapsed:el, target:h.targetMin, done:!!h.doneAt, ok: el <= lim, left: lim - el, roleName: rr ? rr.name : "Devir", running: !h.doneAt && inHours(hrs, Date.now()), hours: hrs};
+}
+function supportDoneAt(t){ return t.handover ? t.handover.at : (cat(t.status) === "done" ? t.resolvedAt : null); }
 function fmtDur(ms){
   if(ms == null) return "—";
   const m = Math.max(0, Math.round(ms/60000));
@@ -1478,19 +1497,19 @@ function renderInbox(){
 function monthKey(ts){ const d = new Date(ts); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0"); }
 function monthLabel(k){ const [y,m] = k.split("-").map(Number); return new Date(y, m-1, 1).toLocaleDateString("tr-TR", {month:"long", year:"numeric"}); }
 function renderResolved(){
-  const all = Object.values(S.tickets).filter(t => cat(t.status) === "done" && t.resolvedAt && !blocked(t));
-  const months = [...new Set(all.map(t => monthKey(t.resolvedAt)))].sort().reverse();
+  const all = Object.values(S.tickets).filter(t => supportDoneAt(t) && !blocked(t));
+  const months = [...new Set(all.map(t => monthKey(supportDoneAt(t))))].sort().reverse();
   const cur = monthKey(Date.now());
   if(!months.includes(cur)) months.unshift(cur);
   if(S.rmonth === null) S.rmonth = cur;
   const staffAccts = allAccounts().filter(u => normRole(u.role) !== "requester");
-  const list = all.filter(t => (S.rmonth === "all" || monthKey(t.resolvedAt) === S.rmonth)
+  const list = all.filter(t => (S.rmonth === "all" || monthKey(supportDoneAt(t)) === S.rmonth)
     && (S.ragent === "all" || t.assignee === S.ragent)
     && (S.rcat === "all" || (t.category || "none") === S.rcat)
     && canSee(t)
     && (S.rpool === "all" || poolOf(t) === S.rpool)
     && (S.rorigin === "all" || t.origin === S.rorigin))
-    .sort((a,b) => b.resolvedAt - a.resolvedAt);
+    .sort((a,b) => supportDoneAt(b) - supportDoneAt(a));
   const rows = list.map(t => ({t, m:slaMetrics(t)}));
 
   const kpi = key => {
@@ -1520,6 +1539,9 @@ function renderResolved(){
       <div class="sla-grid">
         <div class="kpi"><div class="k-l">Çözülen çağrı</div><div class="k-v">${rows.length}</div><div class="k-s">${rows.length - onsite} uzaktan · ${onsite} yerinde</div></div>
         ${SLA_KEYS.map(kpi).join("")}
+        ${(() => { const hs = rows.filter(r => r.t.handover).map(r => handoverMetric(r.t)); if(!hs.length) return "";
+          const fin = hs.filter(h => h.done), ok = fin.filter(h => h.ok).length, pct = fin.length ? Math.round(ok / fin.length * 1000) / 10 : null;
+          return `<div class="kpi ${pct == null ? "" : pct >= 90 ? "ok" : "bad"}"><div class="k-l">Devir hedefi (${esc(hs[0].roleName)})</div><div class="k-v">${pct == null ? "—" : "%" + pct.toLocaleString("tr-TR")}</div><div class="k-s">${ok}/${fin.length} hedefte · ${hs.length - fin.length} devam ediyor</div></div>`; })()}
       </div>
       ${rows.length ? `<div class="tablewrap"><table>
         <thead><tr><th>Anahtar</th><th>Başlık</th><th>Talep tipi</th><th>Açan</th><th>Üstlenen</th><th>Açılış</th><th>Dilim</th><th>Sahiplenme</th><th>İlk müdahale</th><th>Çözüm süresi</th><th>Kullanıcı beklemesi</th><th>Şekil</th></tr></thead>
@@ -1535,7 +1557,7 @@ function renderResolved(){
           <td>${spentCell(m.response, null, m.lim.response)}</td>
           <td>${spentCell(m.resolve, null, m.lim.resolve, {na: m.method === "onsite"})}</td>
           <td class="dur na" style="font-weight:500">${m.pausedMs > 0 ? fmtDur(m.pausedMs) : "—"}</td>
-          <td class="meth">${m.method === "onsite" ? "Yerinde" : "Uzaktan"}</td>
+          <td class="meth">${t.handover ? `Devir: ${esc(handoverMetric(t).roleName)}` : m.method === "onsite" ? "Yerinde" : "Uzaktan"}</td>
         </tr>`).join("")}</tbody></table></div>`
       : `<p class="sub" style="margin:0">Bu dönemde ve seçili filtrelerde çözülen çağrı yok.</p>`}
     </section></div>`;
@@ -1872,7 +1894,7 @@ function renderDashboard(){
   const pendingAp = all.filter(pendingAppr);
   const breached = open.filter(t => { const m = slaMetrics(t); return (m.liveClaim != null && m.liveClaim > m.lim.claim*60000) || (m.liveResponse != null && m.liveResponse > m.lim.response*60000) || (m.liveResolve != null && m.liveResolve > m.lim.resolve*60000); });
   const created = all.filter(t => t.createdAt >= from && t.createdAt <= to);
-  const resolved = live.filter(t => cat(t.status) === "done" && t.resolvedAt >= from && t.resolvedAt <= to);
+  const resolved = live.filter(t => { const d = supportDoneAt(t); return d && d >= from && d <= to; });
   const rm = resolved.map(t => ({t, m:slaMetrics(t)}));
   const pct = key => { const e = rm.filter(r => r.m[key] != null && !(key === "resolve" && r.m.method === "onsite")); if(!e.length) return null; return Math.round(e.filter(r => r.m[key] <= r.m.lim[key]*60000).length / e.length * 1000) / 10; };
   const remote = rm.filter(r => r.m.method !== "onsite" && r.m.resolve != null);
@@ -1887,13 +1909,13 @@ function renderDashboard(){
   const inB = (ts, b) => ts >= b.from && ts < b.to;
   const flow = chartSvg(labels, [
     {name:"Açılan", cls:"s1", values:B.list.map(b => created.filter(t => inB(t.createdAt, b)).length)},
-    {name:"Çözülen", cls:"s2", values:B.list.map(b => resolved.filter(t => inB(t.resolvedAt, b)).length)}
+    {name:"Çözülen", cls:"s2", values:B.list.map(b => resolved.filter(t => inB(supportDoneAt(t), b)).length)}
   ], {bars:true, label:"Açılan ve çözülen çağrılar"});
   // SLA percentages need enough calls per point: weekly unless the period is a single week
   const BS = (to - from) / 86400000 > 8 ? buckets(from, to, 7) : B;
   const slaLabels = BS.list.map(b => BS.step === 7 ? b.label + " haftası" : b.label);
   const slaB = SLA_KEYS.map((k, i) => ({name:["Sahiplenme","İlk müdahale","Çözüm (uzaktan)"][i], cls:["s1","s3","s2"][i], values:BS.list.map(b => {
-    const e = rm.filter(r => inB(r.t.resolvedAt, b) && r.m[k] != null && !(k === "resolve" && r.m.method === "onsite"));
+    const e = rm.filter(r => inB(supportDoneAt(r.t), b) && r.m[k] != null && !(k === "resolve" && r.m.method === "onsite"));
     return e.length ? Math.round(e.filter(r => r.m[k] <= r.m.lim[k]*60000).length / e.length * 100) : null; })}));
   const slaChart = chartSvg(slaLabels, slaB, {max:100, fmt:v => "%" + Math.round(v), target:tgt, label:"SLA uyum trendi"});
 
@@ -2034,7 +2056,7 @@ function renderList(){
       ${isStaff() && !blocked(t) ? (() => { const m = slaMetrics(t), o = {paused: m.pauseReason}; return `
         <td>${spentCell(m.claim, m.liveClaim, m.lim.claim, o)}</td>
         <td>${spentCell(m.response, m.liveResponse, m.lim.response, o)}</td>
-        <td>${spentCell(m.resolve, m.liveResolve, m.lim.resolve, {...o, na: m.done && m.method === "onsite"})}</td>`; })() : ""}
+        <td>${spentCell(m.resolve, m.liveResolve, m.lim.resolve, {...o, na: !m.handedOver && m.done && m.method === "onsite"})}${(() => { const h = handoverMetric(t); return h ? `<div class="hintline" style="white-space:nowrap">${esc(h.roleName)}: <span class="dur ${h.done ? (h.ok ? "ok" : "bad") : (h.left < 0 ? "bad" : "")}" style="font-size:12px">${h.done ? fmtDur(h.elapsed) : h.left < 0 ? fmtDur(-h.left) + " aşıldı" : fmtDur(h.left) + " kaldı"}</span></div>` : ""; })()}</td>`; })() : ""}
       <td style="color:var(--muted)">${ago(t.updatedAt)}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
@@ -2094,6 +2116,7 @@ function renderAdmin(){
   </section>
   ${renderRolesAdmin()}
   ${renderAutoAssignAdmin()}
+  ${renderHandoverAdmin()}
   ${renderApprAdmin()}
   ${renderSlaAdmin()}
   ${renderFormAdmin()}
@@ -2118,6 +2141,24 @@ function renderRolesAdmin(){
     </tbody></table></div>
   </section>`;
 }
+function renderHandoverAdmin(){
+  const ro = S.readOnly ? "disabled" : "", rules = S.handover || [];
+  const staffRoles = rolesList().filter(r => r.base !== "requester");
+  return `<section class="panel">
+    <div class="adm-h"><div><h2>Devir kuralları</h2><p class="sub" style="margin:4px 0 0">Bir çağrı seçtiğin roldeki birine (ör. <b>Depo personeli</b>) atandığında: durumu otomatik olarak kuraldaki duruma geçer, destek ekibinin SLA'sı o anda tamamlanmış sayılır ve bu rol için ayrı bir hedef süre başlar. Hedef süre yalnızca kuralda seçtiğin gün ve saatlerde sayılır. Bitiş saatini ekibin o gün iş çıkarabileceği son saat olarak gir: örneğin kargo kabulü 16:30'da kapanıyorsa 16:30. Bu saatten sonra ya da hafta sonu gelen çağrının süresi bir sonraki çalışma günü başlangıcında başlar.</p></div>
+      <span class="spacer"></span><button class="btn" data-act="ho-add" ${ro}>+ Kural ekle</button></div>
+    ${rules.length ? `<div class="tablewrap"><table style="min-width:600px"><thead><tr><th>Rol</th><th>Atanınca durum</th><th>Hedef süre</th><th>Sayılan saatler (son kabul)</th><th></th></tr></thead><tbody>
+      ${rules.map((r,i) => `<tr>
+        <td><select class="inp" data-act="ho-f" data-i="${i}" data-f="roleId" ${ro}>${staffRoles.map(x => `<option value="${esc(x.id)}" ${r.roleId === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></td>
+        <td><input class="inp" value="${esc(r.statusName)}" data-act="ho-f" data-i="${i}" data-f="statusName" ${ro}></td>
+        <td><div class="slain"><input class="inp" type="number" min="1" max="720" step="1" style="width:80px" value="${esc(r.targetHours)}" data-act="ho-f" data-i="${i}" data-f="targetHours" ${ro}><small>saat</small></div></td>
+        <td>${(() => { const h = r.hours || S.sla.hours; return `<div class="ho-h"><input class="inp" type="time" value="${esc(h.start)}" data-act="ho-f" data-i="${i}" data-f="h-start" ${ro} style="width:auto"> – <input class="inp" type="time" value="${esc(h.end)}" data-act="ho-f" data-i="${i}" data-f="h-end" ${ro} style="width:auto"></div>
+          <div class="ho-d">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="ho-f" data-i="${i}" data-f="h-day" data-d="${d}" ${h.days.includes(d) ? "checked" : ""} ${ro}> ${l}</label>`).join("")}</div>`; })()}</td>
+        <td style="text-align:right"><button class="btn sm ghost danger" data-act="ho-del" data-i="${i}" ${ro}>Sil</button></td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="sub" style="margin:0">Henüz kural yok. Örnek: Depo personeli → “Depoda · gönderim bekleniyor” → 12 saat.</p>`}
+  </section>`;
+}
+function saveHandover(list){ S.handover = list; renderAll(); putConfig("handover", list); }
 function rotationOf(typeK, roleId){
   const pool = TYPES[typeK].pool;
   return allAccounts().filter(u => u.active !== false && normRole(u.role) !== "requester" && (u.roleId ? u.roleId === roleId : normRole(u.role) === roleId)
@@ -2484,7 +2525,12 @@ function slaChips(t){
   ${m.win === "std" ? `<p class="hintline" style="margin:-4px 0 8px">Saat yalnızca mesai saatlerinde (${esc((t.slaHours||S.sla.hours).start)}–${esc((t.slaHours||S.sla.hours).end)}) işler.</p>` : (coverageOf(t) ? `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat yalnızca vardiya saatlerinde işler; gece duruyor.</p>` : `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat kesintisiz (7/24) işler.</p>`)}
   ${m.waiting ? `<div class="notice" style="margin-bottom:8px">Kullanıcı yanıtı bekleniyor: SLA saati durdu. Talep sahibi yanıt yazınca çağrı otomatik olarak devam eder.</div>` : ""}
   ${m.pausedMs > 0 ? `<p class="hintline" style="margin:-2px 0 8px">Toplam kullanıcı beklemesi: <b>${fmtDur(m.pausedMs)}</b> (SLA'dan düşüldü)</p>` : ""}
-  <div class="sla-chips">${chip("claim","Sahiplenme",m.claim)}${chip("response","İlk teknik müdahale",m.response)}${chip("resolve","Çözüm",m.resolve, m.done && m.method === "onsite")}</div>`;
+  <div class="sla-chips">${chip("claim","Sahiplenme",m.claim)}${chip("response","İlk teknik müdahale",m.response)}${chip("resolve", m.handedOver ? "Çözüm (devre kadar)" : "Çözüm", m.resolve, !m.handedOver && m.done && m.method === "onsite")}</div>
+  ${(() => { const h = handoverMetric(t); if(!h) return "";
+    const st = h.done ? `<span class="dur ${h.ok?"ok":"bad"}">${fmtDur(h.elapsed)}</span> <span class="vis">/ ${fmtMin(h.target)} · tamamlandı</span>`
+      : `${h.left < 0 ? `<b>${fmtDur(-h.left)}</b> aşıldı` : `<b>${fmtDur(h.left)}</b> kaldı`} <span class="vis">/ ${fmtMin(h.target)} · ${esc(h.hours.start)}–${esc(h.hours.end)} arası sayılır${h.running ? "" : " · şu an çalışma saati dışında, saat durdu"}</span>`;
+    return `<h3 class="sec-t" style="margin-top:4px">${esc(h.roleName)} SLA <span class="vis">· ${fullDate(t.handover.at)} devredildi · destek SLA'sı bu anda tamamlandı</span></h3>
+      <div class="sla-chips"><div class="chip ${h.done ? (h.ok ? "ok" : "bad") : (h.left < 0 ? "bad" : h.left < h.target*15000 ? "warn" : "")}"><div class="c-l">${esc(h.roleName)} hedefi</div>${st}</div></div>`; })()}`;
 }
 function moveControl(t){
   const ro = S.readOnly ? "disabled" : "";
@@ -3114,6 +3160,13 @@ document.addEventListener("click", async e => {
     case "u-invite": { const u = S.users[id]; if(!u) return;
       api("POST", `/users/${id}/invite`, {}).then(() => toast(`${u.email} adresine bağlantı gönderildi`)).catch(apiFail); break; }
     case "u-import": openImport(); break;
+    case "ho-add": { if(!isAdmin()) return; const used = new Set((S.handover||[]).map(r => r.roleId));
+      const cand = rolesList().filter(r => r.base !== "requester" && !used.has(r.id));
+      const depo = cand.find(r => /depo/i.test(r.name)) || cand.find(r => !r.builtin) || cand[0];
+      if(!depo) return toast("Kural eklenecek rol kalmadı. Önce Roller bölümünden bir rol ekle.", true);
+      saveHandover([...(S.handover||[]), {roleId:depo.id, statusName: /depo/i.test(depo.name) ? "Depoda · gönderim bekleniyor" : depo.name + " · devredildi", targetHours:12,
+        hours: /depo/i.test(depo.name) ? {start:(S.sla.hours && S.sla.hours.start) || "08:00", end:"16:30", days:[1,2,3,4,5]} : clone(S.sla.hours)}]); break; }
+    case "ho-del": { if(!isAdmin()) return; const l = (S.handover||[]).slice(); l.splice(+el.dataset.i, 1); saveHandover(l); break; }
     case "rl-add": { if(!isAdmin()) return; const nid = "r" + Math.random().toString(36).slice(2, 9);
       saveRoles([...rolesList(), {id:nid, name:"Yeni rol", base:"agent"}]);
       setTimeout(() => { const i = $(`[data-act=rl-name][data-id="${nid}"]`); if(i){ i.focus(); i.select(); } }, 0); break; }
@@ -3354,6 +3407,20 @@ document.addEventListener("change", e => {
       else if(a === "ff-help") f.help = el.value.trim() || undefined;
     });
     return;
+  }
+  if(a === "ho-f"){
+    if(!isAdmin()) return;
+    const l = clone(S.handover || []), r = l[+el.dataset.i], f = el.dataset.f; if(!r) return;
+    if(f === "roleId"){ if(l.some((x,j) => j !== +el.dataset.i && x.roleId === el.value)){ el.value = r.roleId; return toast("Bu rol için zaten bir kural var.", true); } r.roleId = el.value; }
+    else if(f === "statusName"){ const v = el.value.trim(); if(!v){ el.value = r.statusName; return; } r.statusName = v.slice(0, 60); }
+    else if(f === "h-start" || f === "h-end" || f === "h-day"){
+      const h = clone(r.hours || S.sla.hours);
+      if(f === "h-day"){ const d = +el.dataset.d; h.days = el.checked ? [...new Set([...h.days, d])] : h.days.filter(x => x !== d); if(!h.days.length){ el.checked = true; return toast("En az bir gün seçili kalmalı.", true); } }
+      else { if(!el.value) return; const k = f === "h-start" ? "start" : "end"; const nh = {...h, [k]:el.value}; if(hm(nh.start) >= hm(nh.end)){ el.value = h[k]; return toast("Bitiş başlangıçtan sonra olmalı.", true); } h[k] = el.value; }
+      r.hours = h;
+    }
+    else { const v = +el.value; if(!(v > 0 && v <= 720)){ el.value = r.targetHours; return toast("Hedef 1–720 saat arasında olmalı.", true); } r.targetHours = v; }
+    saveHandover(l); toast("Devir kuralı kaydedildi"); return;
   }
   if(a === "aa-role"){
     if(!isAdmin()) return;
@@ -3745,6 +3812,7 @@ async function syncNow(){
     if(c.typeAccess) S.typeAccess = c.typeAccess;
     if(c.roles) S.roles = c.roles;
     if(c.autoAssign) S.autoAssign = c.autoAssign;
+    if(c.handover) S.handover = c.handover;
     if(d.tenant) applyTenant(d.tenant);
     S.syncSince = d.serverTime; S.lastSync = Date.now();
     const rb = $("#refreshBtn"); if(rb) rb.title = "Yenile · son güncelleme " + new Date().toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
