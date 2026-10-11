@@ -685,7 +685,8 @@ td.t{font-weight:500;max-width:420px}
       <button class="tab" role="tab" data-act="view" data-v="board" aria-selected="true" data-for="staff">Pano</button>
       <button class="tab" role="tab" data-act="view" data-v="list" aria-selected="false" data-for="staff">Liste</button>
       <button class="tab" role="tab" data-act="view" data-v="resolved" aria-selected="false" data-for="staff">Çözülenler</button>
-      <button class="tab" role="tab" data-act="view" data-v="projects" aria-selected="false" data-for="staff">Projeler</button>
+      <button class="tab" role="tab" data-act="view" data-v="assigned" aria-selected="false" data-for="project">Bana atanan çağrılar</button>
+      <button class="tab" role="tab" data-act="view" data-v="projects" aria-selected="false" data-for="projects">Projeler</button>
       <button class="tab" role="tab" data-act="view" data-v="workflow" aria-selected="false" id="tab-wf" hidden>İş akışı</button>
       <button class="tab" role="tab" data-act="view" data-v="approvals" aria-selected="false" id="tab-appr" hidden>Onaylar <span class="badge" id="appr-badge"></span></button>
       <button class="tab" role="tab" data-act="view" data-v="admin" aria-selected="false" id="tab-admin" hidden>Yönetim</button>
@@ -819,7 +820,8 @@ const LS_KEY = "akis-workflow-v1";
 const ROLES = {
   admin:{label:"Yönetici", desc:"Her şeyi yönetir: kullanıcılar, kategoriler, iş akışı ve tüm talepler"},
   agent:{label:"Destek personeli", desc:"Gelen çağrıları görür, üstlenir ve iş akışında ilerletir"},
-  requester:{label:"Talep sahibi", desc:"Talep açar ve yalnızca kendi açtığı talepleri takip eder"}
+  requester:{label:"Talep sahibi", desc:"Talep açar ve yalnızca kendi açtığı talepleri takip eder"},
+  project:{label:"Proje personeli", desc:"Projeleri görür ve yürütür; destek çağrılarından yalnızca kendisine atananları görür ve üzerinde çalışır"}
 };
 const DEFAULT_SLA = {
   hours:{start:"08:00", end:"17:30", days:[1,2,3,4,5]},
@@ -832,10 +834,10 @@ const DEFAULT_SLA = {
 const SLA_KEYS = ["claim","response","resolve"];
 const DAYS = [[1,"Pzt"],[2,"Sal"],[3,"Çar"],[4,"Per"],[5,"Cum"],[6,"Cmt"],[0,"Paz"]];
 // Firmanın rolleri: üç temel rol + yöneticinin eklediği özel roller (her biri bir yetki seviyesi taşır)
-const BASE_LABEL = {admin:"Yönetici yetkisi", agent:"Destek personeli yetkisi", requester:"Talep sahibi yetkisi"};
+const BASE_LABEL = {admin:"Yönetici yetkisi", agent:"Destek personeli yetkisi", project:"Proje personeli yetkisi", requester:"Talep sahibi yetkisi"};
 function rolesList(){
   const list = Array.isArray(S.roles) ? S.roles : [];
-  const out = ["admin","agent","requester"].map(id => ({id, name:ROLES[id].label, ...(list.find(x => x.id === id) || {}), base:id, builtin:true}));
+  const out = ["admin","agent","project","requester"].map(id => ({id, name:ROLES[id].label, ...(list.find(x => x.id === id) || {}), base:id, builtin:true}));
   list.filter(x => !ROLES[x.id]).forEach(x => out.push({id:x.id, name:x.name, base:ROLES[x.base] ? x.base : "agent"}));
   return out;
 }
@@ -905,7 +907,11 @@ function findTransition(from, to){
 
 function meRef(){ return S.session ? "a:" + S.session.id : (S.me.id ? "u:" + S.me.id : "n:Ben"); }
 function isAdmin(){ return !!S.session && S.session.role === "admin"; }
-function isStaff(){ return !!S.session && (S.session.role === "admin" || S.session.role === "agent"); }
+function isStaff(){ return !!S.session && ["admin","agent","project"].includes(S.session.role); }
+// Proje personeli: projeler + yalnızca kendisine atanmış (ya da atanmış olan) çağrılar
+function isProject(){ return !!S.session && S.session.role === "project"; }
+function canProjects(){ return isAdmin() || isProject(); }
+function everAssignedMe(t){ const me = meRef(); return t.assignee === me || (t.history || []).some(h => h.field === "assignee" && h.to === me); }
 function isRequester(){ return !!S.session && S.session.role === "requester"; }
 function meAcct(){ return S.session ? account(S.session.id) : null; }
 function userGroup(u){ return u && GROUPS[u.group] ? u.group : "center"; }
@@ -914,6 +920,7 @@ function agentPools(u){ return u && Array.isArray(u.pools) && u.pools.length ? u
 function myPools(){
   if(!S.session) return [];
   if(isAdmin()) return Object.keys(POOLS);
+  if(isProject()) return [];
   const u = meAcct();
   return isStaff() ? agentPools(u) : GROUPS[userGroup(u)].pools;
 }
@@ -1028,6 +1035,7 @@ function canSee(t){
   if(!t) return false;
   if(t.approval && t.approval.approver === meRef()) return true;
   if(isAdmin()) return true;
+  if(isProject()) return everAssignedMe(t) || t.reporter === meRef();
   if(isStaff()) return myPools().includes(poolOf(t));
   return t.reporter === meRef();
 }
@@ -1397,7 +1405,10 @@ function renderAll(){
   $("#tab-admin").hidden = !isAdmin();
   $("#tab-wf").hidden = !isAdmin();
   if(S.view === "workflow" && !isAdmin()) S.view = isRequester() ? "mine" : "inbox";
-  document.querySelectorAll(".tab[data-for]").forEach(b => b.hidden = b.dataset.for === "staff" ? !isStaff() : !isRequester());
+  document.querySelectorAll(".tab[data-for]").forEach(b => b.hidden =
+    b.dataset.for === "staff" ? !(isStaff() && !isProject()) : b.dataset.for === "project" ? !isProject() : b.dataset.for === "projects" ? !canProjects() : !isRequester());
+  if(isProject() && !["assigned","projects","approvals"].includes(S.view)) S.view = "assigned";
+  if(!canProjects() && S.view === "projects") S.view = isRequester() ? "mine" : "inbox";
   if(S.view === "admin" && !isAdmin()) S.view = "board";
   const apr = isApprover();
   $("#tab-appr").hidden = !apr;
@@ -1418,7 +1429,7 @@ function renderAll(){
   const main = $("#main");
   if(!S.ready){ main.innerHTML = `<div class="loading">Yükleniyor…</div>`; return; }
   if(S.view === "board") guardedSet(main, renderBoard());
-  else if(S.view === "list") guardedSet(main, renderList());
+  else if(S.view === "list" || S.view === "assigned") guardedSet(main, renderList());
   else if(S.view === "admin") guardedSet(main, renderAdmin());
   else if(S.view === "inbox") guardedSet(main, renderInbox());
   else if(S.view === "resolved") guardedSet(main, renderResolved());
@@ -1449,7 +1460,7 @@ function canOpenType(k){
 }
 function contactKey(){ return "tima-contact:" + SLUG + ":" + (S.session ? S.session.id : ""); }
 function contactLine(t){ return t.contact && (t.contact.name || t.contact.phone) ? `${esc(t.contact.name || "")}${t.contact.phone ? ` · <a href="tel:${esc(t.contact.phone.replace(/[^\d+]/g, ""))}">${esc(t.contact.phone)}</a>` : ""}` : ""; }
-function createPools(){ return isAdmin() ? Object.keys(POOLS) : myPools(); }
+function createPools(){ return isAdmin() || isProject() ? Object.keys(POOLS) : myPools(); }
 function waited(t){
   const m = slaMetrics(t), el = m.liveClaim || 0, lim = m.lim.claim * 60000;
   const cls = el > lim ? "long" : el > lim*0.75 ? "warn" : "";
@@ -1646,8 +1657,8 @@ function projPoolTag(p){ return p.pool && POOLS[p.pool] ? poolTag(p.pool) : `<sp
 function projTasks(pid){ return Object.values(S.ptasks).filter(t => t.projectId === pid).sort((a,b) => (a.order ?? a.num) - (b.order ?? b.num)); }
 function projTickets(pid){ return Object.values(S.tickets).filter(t => t.projectId === pid); }
 function projTeam(p){ return [...new Set([p.lead, ...(p.members||[])].filter(Boolean))]; }
-function canSeeProject(p){ return isAdmin() || (isStaff() && (!p.pool || myPools().includes(p.pool))); }
-function canEditProject(p){ return !S.readOnly && (isAdmin() || projTeam(p).includes(meRef())); }
+function canSeeProject(p){ return canProjects(); }
+function canEditProject(p){ return !S.readOnly && canProjects(); }
 function todayStr(){ const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
 function daysLeft(ds){ if(!ds) return null; const [y,m,d] = ds.split("-").map(Number); const t = new Date(y, m-1, d); const n = new Date(); n.setHours(0,0,0,0); return Math.round((t - n) / 86400000); }
 function fmtDate(ds){ if(!ds) return "—"; const [y,m,d] = ds.split("-").map(Number); return new Date(y, m-1, d).toLocaleDateString("tr-TR", {day:"numeric", month:"short", year:"numeric"}); }
@@ -1995,6 +2006,7 @@ function renderDashboard(){
 }
 
 function emptyState(){
+  if(isProject()) return `<div class="empty"><h2>Sana atanmış çağrı yok</h2><p>Destek ekibi bir çağrıyı sana atadığında burada görünür. Projelerine üstteki <b>Projeler</b> sekmesinden ulaşabilirsin.</p></div>`;
   if(isRequester()) return `<div class="empty"><h2>Henüz talebin yok</h2><p>Bir sorun ya da isteğin olduğunda talep aç; destek ekibi üstlenince durumunu buradan takip edebilirsin.</p><p><button class="btn primary" data-act="create">+ Talep oluştur</button></p></div>`;
   return `<div class="empty"><h2>Henüz talep yok</h2><p>İlk talebi oluşturduğunda <b>${esc(statusName(S.wf.statuses[0]?.id))}</b> sütununda başlar.</p><p><button class="btn primary" data-act="create">+ Talep oluştur</button></p></div>`;
 }
@@ -2135,7 +2147,7 @@ function renderRolesAdmin(){
       ${rolesList().map(r => `<tr>
         <td><input class="inp" value="${esc(r.name)}" data-act="rl-name" data-id="${esc(r.id)}" aria-label="Rol adı" ${ro}></td>
         <td>${r.builtin ? `<span class="hintline">${BASE_LABEL[r.base]} <span class="vis">(temel rol)</span></span>`
-          : `<select class="inp" data-act="rl-base" data-id="${esc(r.id)}" ${ro}>${["agent","admin","requester"].map(b => `<option value="${b}" ${r.base === b ? "selected" : ""}>${BASE_LABEL[b]}</option>`).join("")}</select>`}</td>
+          : `<select class="inp" data-act="rl-base" data-id="${esc(r.id)}" ${ro}>${["agent","project","admin","requester"].map(b => `<option value="${b}" ${r.base === b ? "selected" : ""}>${BASE_LABEL[b]}</option>`).join("")}</select>`}</td>
         <td style="font-variant-numeric:tabular-nums">${counts[r.id] || 0}</td>
         <td style="text-align:right">${r.builtin ? "" : `<button class="btn sm ghost danger" data-act="rl-del" data-id="${esc(r.id)}" ${counts[r.id] || ro ? "disabled" : ""} title="${counts[r.id] ? "Bu roldeki kullanıcıları önce başka role taşı" : "Rolü sil"}">Sil</button>`}</td></tr>`).join("")}
     </tbody></table></div>
@@ -2478,7 +2490,7 @@ function renderDrawer(){
         <dt>${staff ? "Atanan" : "Destek sorumlusu"}</dt><dd><button class="fbtn" data-act="pick-assignee" data-id="${t.id}" ${fro}>${avatar(t.assignee,22)}${esc(t.assignee || staff ? personName(t.assignee) : "Henüz üstlenilmedi")}</button>${staff && t.assignee && (() => { const h = (t.history||[]).filter(x => x.field === "assignee").pop(); return h && h.by === "n:TIMA otomatik atama" && h.to === t.assignee; })() ? `<span class="autotag" title="Talep tipi kuralına göre sırayla atandı">otomatik atandı</span>` : ""}
           ${!t.assignee && !S.readOnly && staff ? `<button class="btn sm ghost" data-act="assign-me" data-id="${t.id}">Bana ata</button>` : ""}</dd>
         <dt>Öncelik</dt><dd><select class="sel" data-act="f-priority" data-id="${t.id}" aria-label="Öncelik" ${fro}>${PRIS.map(p => `<option value="${p.id}" ${p.id===t.priority?"selected":""}>${p.sym}  ${p.label}</option>`).join("")}</select></dd>
-        ${staff ? `<dt>Proje</dt><dd class="projbox">${(() => {
+        ${staff && canProjects() ? `<dt>Proje</dt><dd class="projbox">${(() => {
           const opts = Object.values(S.projects).filter(p => canSeeProject(p) && (p.status !== "done" || p.id === t.projectId));
           const cur = t.projectId && S.projects[t.projectId];
           return `<select class="sel" data-act="f-project" data-id="${t.id}" aria-label="Proje" ${fro}><option value="">Bağlı değil</option>${opts.map(p => `<option value="${p.id}" ${p.id===t.projectId?"selected":""}>${esc(p.key)} · ${esc(p.name)}</option>`).join("")}</select>
@@ -2712,7 +2724,7 @@ function renderDialog(force = true){
         <label class="fld"><span>E-posta</span><input class="inp" id="u-email" type="email" value="${esc(dlg.email || "")}" placeholder="ayse.yilmaz@firma.com.tr" autocomplete="off" ${dlg.shared ? "disabled" : ""}><small class="hintline">${dlg.shared ? "Ortak hesap: e-posta ve parolayı yalnızca kişinin kendisi değiştirebilir." : "Bildirimler ve parola bağlantısı bu adrese gider."}</small></label>
         ${edit ? "" : `<label class="fld"><span>Kullanıcı adı <span class="req">*</span></span><input class="inp" id="u-username" value="${esc(dlg.username)}" placeholder="ayse.yilmaz" autocapitalize="off" spellcheck="false" autocomplete="off"><small class="hintline">Küçük harf, rakam, nokta, tire veya alt çizgi. Sonradan değiştirilemez.</small></label>`}
         <label class="fld"><span>Rol</span><select class="inp" id="u-role">
-          ${["agent","admin","requester"].map(b => `<optgroup label="${BASE_LABEL[b]}">${rolesList().filter(r => r.base === b).map(r => `<option value="${esc(r.id)}" ${(dlg.roleId || dlg.role) === r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</optgroup>`).join("")}</select>
+          ${["agent","project","admin","requester"].map(b => `<optgroup label="${BASE_LABEL[b]}">${rolesList().filter(r => r.base === b).map(r => `<option value="${esc(r.id)}" ${(dlg.roleId || dlg.role) === r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</optgroup>`).join("")}</select>
           <small class="hintline">${esc(BASE_LABEL[dlg.role])}: ${esc(ROLES[dlg.role]?.desc || "")}. Yeni rolleri aşağıdaki <b>Roller</b> bölümünden ekleyebilirsin.</small></label>
         ${dlg.role === "requester" ? `<label class="fld"><span>Kullanıcı grubu <span class="req">*</span></span><select class="inp" id="u-group">
             ${Object.entries(GROUPS).map(([k,g]) => `<option value="${k}" ${dlg.group===k?"selected":""}>${g.label}</option>`).join("")}</select>
@@ -2833,7 +2845,7 @@ function renderDialog(force = true){
     </div>`;
   } else if(dlg.kind === "project"){
     const edit = !!dlg.id;
-    const staff = allAccounts().filter(u => u.active && normRole(u.role) !== "requester");
+    const staff = allAccounts().filter(u => u.active && ["admin","project"].includes(normRole(u.role)));   // proje ekibi: yöneticiler ve proje personeli
     html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt" style="width:min(600px,calc(100% - 24px))">
       <div class="dl-h"><h3 id="dlgt">${edit ? "Projeyi düzenle" : "Proje oluştur"}</h3>${dlg.fromTicket ? `<p class="dl-sub">${esc(S.tickets[dlg.fromTicket]?.key || "")} çağrısı bu projeye bağlanacak.</p>` : ""}</div>
@@ -2854,7 +2866,7 @@ function renderDialog(force = true){
           <label class="fld"><span>Bitiş hedefi</span><input class="inp" type="date" id="pj-due" value="${esc(dlg.due)}"></label>
         </div>
         <div class="fld"><span>Proje lideri</span><div><button class="fbtn" style="margin-left:0;border-color:var(--line-2)" data-act="pj-lead">${avatar(dlg.lead,22)}${esc(personName(dlg.lead))}</button></div></div>
-        <div class="fld"><span>Ekip üyeleri</span><div class="memlist">${staff.filter(u => "a:"+u.id !== dlg.lead).map(u => `<label class="chk" style="color:var(--ink)"><input type="checkbox" class="pj-mem" value="a:${u.id}" ${dlg.members.includes("a:"+u.id)?"checked":""}> ${avatar("a:"+u.id,20)} ${esc(u.name)} <span class="vis">${ROLES[normRole(u.role)].label}</span></label>`).join("") || `<span class="vis">Başka destek personeli yok.</span>`}</div></div>
+        <div class="fld"><span>Ekip üyeleri</span><div class="memlist">${staff.filter(u => "a:"+u.id !== dlg.lead).map(u => `<label class="chk" style="color:var(--ink)"><input type="checkbox" class="pj-mem" value="a:${u.id}" ${dlg.members.includes("a:"+u.id)?"checked":""}> ${avatar("a:"+u.id,20)} ${esc(u.name)} <span class="vis">${ROLES[normRole(u.role)].label}</span></label>`).join("") || `<span class="vis">Başka proje personeli yok. Yönetim → Kullanıcılar'dan “Proje personeli” rolüyle ekleyebilirsin.</span>`}</div></div>
         <label class="fld"><span>Açıklama</span><textarea class="desc" id="pj-desc" style="min-height:80px" placeholder="Kapsam, hedefler, önemli notlar">${esc(dlg.description)}</textarea></label>
         ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
       </div>
@@ -2972,7 +2984,9 @@ function renderPickerList(){
   const q = pick.q.trim().toLocaleLowerCase("tr-TR");
   const mine = meRef();
   const opts = [{ref:null, label:"Atanmamış"}];
-  const accts = allAccounts().filter(u => u.active && normRole(u.role) !== "requester" && (!pick.pool || normRole(u.role) === "admin" || agentPools(u).includes(pick.pool)) && (!pick.only || pick.only.includes("a:" + u.id)));
+  const accts = allAccounts().filter(u => u.active && normRole(u.role) !== "requester"
+    && (pick.pool === "__project" ? ["admin","project"].includes(normRole(u.role)) : (!pick.pool || ["admin","project"].includes(normRole(u.role)) || agentPools(u).includes(pick.pool)))
+    && (!pick.only || pick.only.includes("a:" + u.id)));
   const me = accts.find(u => "a:" + u.id === mine);
   if(me) opts.push({ref:mine, label:me.name + " (sen)", sub:me.username});
   accts.filter(u => "a:" + u.id !== mine).forEach(u => opts.push({ref:"a:" + u.id, label:u.name, sub:u.username}));
@@ -3054,7 +3068,7 @@ document.addEventListener("click", async e => {
         run:() => { S.proj = null; removeProject(id); toast(`${p.key} silindi`); }};
       renderDialog(); break;
     }
-    case "pj-lead": captureDialog(); openPicker(el, dlg.lead, ref => { if(dlg){ dlg.lead = ref; dlg.members = dlg.members.filter(m => m !== ref); renderDialog(); } }, dlg.pool || null); break;
+    case "pj-lead": captureDialog(); openPicker(el, dlg.lead, ref => { if(dlg){ dlg.lead = ref; dlg.members = dlg.members.filter(m => m !== ref); renderDialog(); } }, "__project"); break;
     case "pj-save": {
       captureDialog();
       const edit = !!dlg.id, fail = m => { dlg.error = m; renderDialog(); };
@@ -3652,7 +3666,7 @@ function loadXlsx(){
 async function exportUsers(){
   if(!isAdmin()) return;
   await loadXlsx();
-  const roleL = {requester:"Talep sahibi", agent:"Destek personeli", admin:"Yönetici"};
+  const roleL = {requester:"Talep sahibi", agent:"Destek personeli", admin:"Yönetici", project:"Proje personeli"};
   const groupL = {center:"Merkez kullanıcısı", store:"Mağaza kullanıcısı", regional:"Bölge müdürü"};
   const poolL = p => { const a = (p && p.length ? p : ["center","store"]); return a.includes("center") && a.includes("store") ? "Merkez + Mağaza" : a.includes("store") ? "Mağaza" : "Merkez"; };
   const head = ["Ad Soyad *","Kullanıcı adı *","E-posta *","Rol *","Grup (talep sahibi)","Mağaza / birim / bölge","Onaylayıcı (kullanıcı adı)","Destek havuzları (destek personeli)","Aktif","Parola belirlendi","Açtığı talep","Eklenme tarihi"];
@@ -3696,7 +3710,7 @@ async function manualRefresh(){
 // Çağrıyı ata: önce rol, sonra o roldeki kişi
 function assignableIn(t){
   const pool = poolOf(t);
-  return allAccounts().filter(u => u.active !== false && normRole(u.role) !== "requester" && (normRole(u.role) === "admin" || agentPools(u).includes(pool)));
+  return allAccounts().filter(u => u.active !== false && normRole(u.role) !== "requester" && (["admin","project"].includes(normRole(u.role)) || agentPools(u).includes(pool)));
 }
 function openAssign(t){
   const cur = t.assignee && account(t.assignee.slice(2));
@@ -3771,7 +3785,7 @@ function unlock(me){
   S.session = {id:me.id, role:normRole(me.role)};
   S.users[me.id] = Object.assign(S.users[me.id] || {}, me);
   if(first){
-    S.view = S.session.role === "requester" ? "mine" : S.session.role === "agent" ? "inbox" : "dash";
+    S.view = S.session.role === "requester" ? "mine" : S.session.role === "agent" ? "inbox" : S.session.role === "project" ? "assigned" : "dash";
     S.mine = false; S.fcat = "all"; const fm = $("#fmine"); if(fm) fm.checked = false;
   }
   document.body.classList.remove("locked");
