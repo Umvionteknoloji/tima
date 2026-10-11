@@ -870,6 +870,8 @@ function ago(ts){
   if(s < 86400*7) return Math.floor(s/86400) + " gün önce";
   return new Date(ts).toLocaleDateString("tr-TR", {day:"numeric", month:"short", year:"numeric"});
 }
+// Akışlarda: 9 Ekim 2026, 14:32
+function evDate(ts){ if(!ts) return ""; const d = new Date(ts); return d.toLocaleDateString("tr-TR", {day:"numeric", month:"long", year:"numeric"}) + ", " + d.toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit"}); }
 function fullDate(ts){ return ts ? new Date(ts).toLocaleString("tr-TR",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : ""; }
 const $ = (s, r=document) => r.querySelector(s);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1724,7 +1726,7 @@ function renderProjectDetail(p){
       </tbody></table></div>` : `<p class="sub" style="margin:0">Bu projeye bağlı çağrı yok.</p>`}`;
   } else {
     const h = (p.history||[]).slice().reverse();
-    body = `<div class="feed">${h.length ? h.map(e => `<div class="ev">${avatar(e.by,28)}<div class="ev-b"><div class="ev-h"><b>${esc(personName(e.by))}</b><span>${esc(e.text)}</span><time title="${fullDate(e.at)}">${ago(e.at)}</time></div></div></div>`).join("") : `<p class="sub">Kayıt yok.</p>`}</div>`;
+    body = `<div class="feed">${h.length ? h.map(e => `<div class="ev">${avatar(e.by,28)}<div class="ev-b"><div class="ev-h"><b>${esc(personName(e.by))}</b><span>${esc(e.text)}</span><time datetime="${new Date(e.at).toISOString()}" title="${ago(e.at)}">${evDate(e.at)}</time></div></div></div>`).join("") : `<p class="sub">Kayıt yok.</p>`}</div>`;
   }
   return `<div class="adm" style="max-width:none">
     <section class="panel">
@@ -2462,7 +2464,7 @@ function renderDrawer(){
         ${S.readOnly ? "" : `<div class="cmt-new">${avatar(meRef(),28)}<textarea id="cmt" placeholder="${staff ? "Yorum ekle" : pauseIds().has(t.status) ? "Destek ekibine yanıtını yaz" : "Destek ekibine mesaj yaz"}" aria-label="Yorum"></textarea><button class="btn primary sm" data-act="add-cmt" data-id="${t.id}">Gönder</button></div>
           ${staff ? `<div class="cmt-opts"><label class="chk"><input type="checkbox" id="cmt-int"> Dahili not: yalnızca destek ekibi görür</label><span class="vis">İşaretlenmezse talep sahibi de görür</span></div>` : ""}`}
         <div class="feed">${comments.length ? comments.map(c => `<div class="ev ${c.internal ? "internal" : ""}">${avatar(c.by,28)}<div class="ev-b">
-          <div class="ev-h"><b>${esc(personName(c.by))}</b>${c.internal ? `<span class="int-tag">${c.kind === "solution" ? "Çözüm notu · dahili" : c.kind === "handover" ? `Atama notu → ${esc(personName(c.to))}` : "Dahili"}</span>` : ""}<time title="${fullDate(c.at)}">${ago(c.at)}</time></div>
+          <div class="ev-h"><b>${esc(personName(c.by))}</b>${c.internal ? `<span class="int-tag">${c.kind === "solution" ? "Çözüm notu · dahili" : c.kind === "handover" ? `Atama notu → ${esc(personName(c.to))}` : "Dahili"}</span>` : ""}<time datetime="${new Date(c.at).toISOString()}" title="${ago(c.at)}">${evDate(c.at)}</time></div>
           <div class="ev-txt">${esc(c.text)}</div>${c.reopen ? `<div class="ev-via" style="color:var(--danger);font-weight:700">↺ Çözülmedi bildirimi · çağrı yeniden açıldı</div>` : c.via ? `<div class="ev-via">${c.closing ? "Kapatma notu" : `“${esc(c.via)}” sırasında`}</div>` : ""}</div></div>`).join("") : `<p style="color:var(--muted);margin:0">Henüz yorum yok.</p>`}</div>`
       : `<div class="feed">${hist.length ? hist.map(histItem).join("") : `<p style="color:var(--muted);margin:0">Kayıt yok.</p>`}</div>`}
     </div>`);
@@ -2572,7 +2574,7 @@ function histItem(h){
   else if(h.field === "title") body = `başlığı değiştirdi<div class="hist" style="color:var(--muted)">${esc(h.from)}</div>`;
   else if(h.field === "description") body = `açıklamayı güncelledi`;
   else body = esc(h.field) + " değişti";
-  return `<div class="ev">${avatar(h.by,28)}<div class="ev-b"><div class="ev-h"><b>${esc(personName(h.by))}</b><span>${body.split("<div")[0]}</span><time title="${fullDate(h.at)}">${ago(h.at)}</time></div>${body.includes("<div") ? "<div" + body.split("<div").slice(1).join("<div") : ""}</div></div>`;
+  return `<div class="ev">${avatar(h.by,28)}<div class="ev-b"><div class="ev-h"><b>${esc(personName(h.by))}</b><span>${body.split("<div")[0]}</span><time datetime="${new Date(h.at).toISOString()}" title="${ago(h.at)}">${evDate(h.at)}</time></div>${body.includes("<div") ? "<div" + body.split("<div").slice(1).join("<div") : ""}</div></div>`;
 }
 
 /* ---------- dialogs ---------- */
