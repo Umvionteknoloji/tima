@@ -346,7 +346,7 @@ $("#reloadLog").addEventListener("click", loadLog);
 
 /* kullanıcılar: firmalar arası paylaşım */
 let people = [], linking = null;
-const ROLE = {admin:"Yönetici", agent:"Destek personeli", requester:"Talep sahibi"};
+const ROLE = {admin:"Yönetici", agent:"Destek personeli", requester:"Talep sahibi", project:"Proje personeli"};
 async function loadUsers(){
   const r = await api("GET", "/users?q=" + encodeURIComponent($("#u-q").value.trim()));
   const groups = new Map();
@@ -384,7 +384,7 @@ function fillTargets(box, list, emptyMsg){
   box.innerHTML = list.length ? list.map(t => `<div class="tgt" data-t="${esc(t.slug)}">
       <input type="checkbox" class="k-on" aria-label="${esc(t.name)}">
       <b>${esc(t.name)} <span class="hint" style="font-weight:400">/${esc(t.slug)}</span></b>
-      <select class="inp k-role"><option value="agent">Destek personeli</option><option value="admin">Yönetici</option><option value="requester">Talep sahibi</option></select>
+      <select class="inp k-role"><option value="agent">Destek personeli</option><option value="project">Proje personeli</option><option value="admin">Yönetici</option><option value="requester">Talep sahibi</option></select>
       <div class="pl k-pools"><label><input type="checkbox" value="center" checked> Merkez havuzu</label><label><input type="checkbox" value="store" checked> Mağaza havuzu</label></div>
       <div class="rq k-rq" hidden><select class="inp k-group"><option value="center">Merkez kullanıcısı</option><option value="store">Mağaza kullanıcısı</option><option value="regional">Bölge müdürü</option></select><input class="inp k-loc" placeholder="Mağaza / birim / bölge"></div>
     </div>`).join("") : `<p class="hint">${esc(emptyMsg)}</p>`;
