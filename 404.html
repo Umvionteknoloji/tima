@@ -97,6 +97,8 @@ button{cursor:pointer}
 .rot{margin:0;padding-left:20px;font-size:13.5px}
 .rot li{padding:1px 0}
 .rot li.next{font-weight:700}
+.contact a{color:var(--accent);text-decoration:none;font-weight:600}
+.contact a:hover{text-decoration:underline}
 .aslist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:260px;overflow:auto}
 .asrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
 .asrow:first-child{border-top:0}
@@ -1138,7 +1140,11 @@ function bizMs(a, b, hours){
   }
   return total;
 }
-function clockMs(t, win, from, to){ return win === "std" ? bizMs(from, to, t.slaHours) : Math.max(0, to - from); }
+// Mesai dışı destek saatleri (ör. 08:00–22:00): bu saatler dışında SLA saati hiç işlemez. null = 7/24.
+const DEFAULT_COVERAGE = {start:"08:00", end:"22:00", days:[0,1,2,3,4,5,6]};
+function coverageOf(t){ return t && t.slaCoverage !== undefined ? t.slaCoverage : (S.sla && S.sla.coverage !== undefined ? S.sla.coverage : DEFAULT_COVERAGE); }
+function inHours(hs, ts){ if(!hs) return true; const d = new Date(ts), m = d.getHours()*60 + d.getMinutes(); return hs.days.includes(d.getDay()) && m >= hm(hs.start) && m < hm(hs.end); }
+function clockMs(t, win, from, to){ if(win === "std") return bizMs(from, to, t.slaHours); const c = coverageOf(t); return c ? bizMs(from, to, c) : Math.max(0, to - from); }
 function pauseIds(){ return new Set(S.wf.statuses.filter(s => s.pausesSla).map(s => s.id)); }
 // periods the call spent in a status that pauses the SLA ("waiting for the requester")
 function pauseIntervals(t, until){
@@ -1160,7 +1166,7 @@ function slaSpan(t, win, from, to, pauses){
   return Math.max(0, ms);
 }
 function clockRunning(t, win){
-  if(win !== "std") return true;
+  if(win !== "std") return inHours(coverageOf(t), Date.now());
   const hs = t.slaHours || S.sla.hours, d = new Date(), mins = d.getHours()*60 + d.getMinutes();
   return hs.days.includes(d.getDay()) && mins >= hm(hs.start) && mins < hm(hs.end);
 }
@@ -1238,6 +1244,7 @@ function mergeSla(x){
   if(x && x.hours) Object.assign(d.hours, x.hours);
   if(x && x.criteria) SLA_KEYS.forEach(k => Object.assign(d.criteria[k], x.criteria[k] || {}));
   d.reopenDays = x && x.reopenDays >= 1 ? x.reopenDays : 5;
+  d.coverage = x && x.coverage !== undefined ? x.coverage : clone(DEFAULT_COVERAGE);
   return d;
 }
 function saveSla(cfg){ S.sla = cfg; renderAll(); putConfig("sla", cfg); }
@@ -1415,6 +1422,8 @@ function canOpenType(k){
   const a = typeAccess()[k];
   return !Array.isArray(a) || a.includes(userGroup(meAcct()));
 }
+function contactKey(){ return "tima-contact:" + SLUG + ":" + (S.session ? S.session.id : ""); }
+function contactLine(t){ return t.contact && (t.contact.name || t.contact.phone) ? `${esc(t.contact.name || "")}${t.contact.phone ? ` · <a href="tel:${esc(t.contact.phone.replace(/[^\d+]/g, ""))}">${esc(t.contact.phone)}</a>` : ""}` : ""; }
 function createPools(){ return isAdmin() ? Object.keys(POOLS) : myPools(); }
 function waited(t){
   const m = slaMetrics(t), el = m.liveClaim || 0, lim = m.lim.claim * 60000;
@@ -1443,7 +1452,7 @@ function renderInbox(){
       <td>${typeTag(t)}</td>
       <td>${catTag(t.category)}</td>
       <td><span style="display:inline-flex;gap:6px;align-items:center">${priIcon(t.priority)}${esc((PRIS.find(p=>p.id===t.priority)||PRIS[2]).label)}</span></td>
-      <td><span class="who" style="display:inline-flex;gap:8px;align-items:center">${avatar(t.reporter,22)}<span>${esc(personName(t.reporter))}<small>${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></span></span></td>
+      <td><span class="who" style="display:inline-flex;gap:8px;align-items:center">${avatar(t.reporter,22)}<span>${esc(personName(t.reporter))}<small>${t.contact && t.contact.name ? esc(t.contact.name) + " · " : ""}${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></span></span></td>
       <td>${claim ? waited(t) : pill(t.status)}</td>
       ${claim ? `<td style="text-align:right"><button class="btn sm primary" data-act="claim" data-id="${t.id}" ${ro}>Üstlen</button></td>` : ""}
     </tr>`).join("")}</tbody></table></div>`;
@@ -1512,7 +1521,7 @@ function renderResolved(){
           <td><span style="display:inline-flex;gap:8px;align-items:center">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span></span></td>
           <td class="t">${esc(t.title)}<div>${catTag(t.category)}</div></td>
           <td>${typeTag(t)}</td>
-          <td class="who">${esc(personName(t.reporter))}<small>${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></td>
+          <td class="who">${esc(personName(t.reporter))}<small>${t.contact && t.contact.name ? esc(t.contact.name) + " · " : ""}${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></td>
           <td><span style="display:inline-flex;gap:8px;align-items:center">${avatar(t.assignee,22)}${esc(personName(t.assignee))}</span></td>
           <td style="color:var(--muted);white-space:nowrap" title="Kapanış: ${fullDate(t.resolvedAt)}">${new Date(t.createdAt).toLocaleString("tr-TR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td>
           <td><span class="win ${m.win}">${m.win === "std" ? "Mesai" : "Mesai dışı"}</span></td>
@@ -1706,7 +1715,7 @@ function renderProjectDetail(p){
         ${tks.map(t => `<tr data-act="open" data-id="${t.id}" tabindex="0"><td><span style="display:inline-flex;gap:8px;align-items:center">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span></span></td>
           <td class="t">${esc(t.title)}${(t.reopens||[]).length && cat(t.status) !== "done" ? ` <span class="reotag" title="Talep sahibi çözülmedi dedi">↺ Tekrar açıldı${t.reopens.length > 1 ? " ×" + t.reopens.length : ""}</span>` : ""}</td><td>${typeTag(t)}</td><td>${pill(t.status)}</td>
           <td><span style="display:inline-flex;gap:8px;align-items:center">${avatar(t.assignee,22)}${esc(personName(t.assignee))}</span></td>
-          <td class="who">${esc(personName(t.reporter))}<small>${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></td>
+          <td class="who">${esc(personName(t.reporter))}<small>${t.contact && t.contact.name ? esc(t.contact.name) + " · " : ""}${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></td>
           ${ed ? `<td style="text-align:right"><button class="btn sm ghost" data-act="p-unlink" data-id="${t.id}">Bağlantıyı kaldır</button></td>` : ""}</tr>`).join("")}
       </tbody></table></div>` : `<p class="sub" style="margin:0">Bu projeye bağlı çağrı yok.</p>`}`;
   } else {
@@ -1760,7 +1769,7 @@ function renderApprovals(){
   const card = t => `<article class="acard">
     <div class="prow" style="justify-content:space-between"><span style="display:inline-flex;gap:8px;align-items:center">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span>${typeTag(t)}</span><span class="hintline">${ago(t.createdAt)} gönderildi</span></div>
     <h3 style="margin:8px 0 4px;font-size:16px"><button class="linkish" data-act="open" data-id="${t.id}">${esc(t.title)}</button></h3>
-    <div class="who" style="display:flex;gap:8px;align-items:center;font-size:13.5px">${avatar(t.reporter,24)}<span>${esc(personName(t.reporter))}<small>${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></span>
+    <div class="who" style="display:flex;gap:8px;align-items:center;font-size:13.5px">${avatar(t.reporter,24)}<span>${esc(personName(t.reporter))}<small>${t.contact && t.contact.name ? esc(t.contact.name) + " · " : ""}${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""}</small></span>
       <span class="spacer"></span>${catTag(t.category)}<span style="display:inline-flex;gap:4px;align-items:center;font-size:13px">${priIcon(t.priority)}${esc((PRIS.find(p=>p.id===t.priority)||PRIS[2]).label)}</span></div>
     ${fieldsBox(t, true)}
     ${attachmentsView(t, true)}
@@ -2240,6 +2249,14 @@ function renderSlaAdmin(){
       <span style="display:flex;gap:10px;flex-wrap:wrap">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="sla-day" data-d="${d}" ${h.days.includes(d)?"checked":""} ${ro}> ${l}</label>`).join("")}</span>
     </div>
     <p class="sub" style="margin:10px 0 0">Bu saatler dışında ve işaretli olmayan günlerde açılan çağrılar mesai dışı sayılır.</p>
+    <h3 class="sec-t" style="margin-top:18px">Mesai dışı destek saatleri</h3>
+    ${(() => { const c = S.sla.coverage; return `<div class="hours">
+      <label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="sla-cov247" ${c ? "" : "checked"} ${ro}> 7/24 kesintisiz</label>
+      ${c ? `<label class="chk" style="color:var(--ink)">Başlangıç <input class="inp" type="time" value="${esc(c.start)}" data-act="sla-cstart" ${ro}></label>
+      <label class="chk" style="color:var(--ink)">Bitiş <input class="inp" type="time" value="${esc(c.end)}" data-act="sla-cend" ${ro}></label>
+      <span style="display:flex;gap:10px;flex-wrap:wrap">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="sla-cday" data-d="${d}" ${c.days.includes(d)?"checked":""} ${ro}> ${l}</label>`).join("")}</span>` : ""}
+    </div>`; })()}
+    <p class="sub" style="margin:8px 0 0">Mesai dışında açılan çağrılarda SLA saati yalnızca bu saatlerde işler. Örneğin 08:00–22:00 seçiliyse 22:00'den sonra açılan çağrının saati ertesi sabah 08:00'de başlar; o saat mesai içindeyse standart hedefler uygulanır.</p>
     <h3 class="sec-t" style="margin-top:18px">Çözülmedi bildirimi</h3>
     <div class="hours"><label class="chk" style="color:var(--ink)">Kapanıştan sonra <input class="inp" type="number" min="1" max="30" style="width:76px" value="${S.sla.reopenDays || 5}" data-act="sla-reopen" ${ro}> iş günü</label></div>
     <p class="sub" style="margin:8px 0 0">Talep sahibi bu süre içinde “Çözülmedi” diyerek kapanan çağrıyı yeniden açabilir; süre dolunca düğme pasifleşir. İş günleri yukarıdaki mesai günlerine göre sayılır.</p>
@@ -2422,6 +2439,7 @@ function renderDrawer(){
         ${staff ? `<dt>Açan grup</dt><dd>${esc(originLabel(t))}${t.location ? ` <span class="vis">· ${esc(t.location)}</span>` : ""}</dd>` : ""}
         <dt>Sonuç</dt><dd>${res ? `<b>${esc(res.label)}</b><span style="color:var(--muted);font-size:13px">${ago(t.resolvedAt)}</span>` : `<span style="color:var(--muted)">Çözülmedi</span>`}</dd>
         <dt>Raporlayan</dt><dd>${avatar(t.reporter,22)}${esc(personName(t.reporter))}</dd>
+        ${t.contact ? `<dt>İletişim</dt><dd class="contact">☎ ${contactLine(t)}</dd>` : ""}
         <dt>Oluşturuldu</dt><dd title="${fullDate(t.createdAt)}">${ago(t.createdAt)}</dd>
         <dt>Güncellendi</dt><dd title="${fullDate(t.updatedAt)}">${ago(t.updatedAt)}</dd>
       </dl>
@@ -2455,7 +2473,7 @@ function slaChips(t){
     return `<div class="chip ${left < 0 ? "bad" : left < lim*15000 ? "warn" : ""}"><div class="c-l">${label}</div>${left < 0 ? `<b>${fmtDur(-left)}</b> aşıldı` : `<b>${fmtDur(left)}</b> kaldı`} <span class="vis">/ ${fmtMin(lim)}${m.waiting ? " · beklemede" : m.running ? "" : " · saat durdu"}</span></div>`;
   };
   return `<h3 class="sec-t">SLA <span class="win ${m.win}">${m.win === "std" ? "Standart mesai" : "Mesai dışı"}</span></h3>
-  ${m.win === "std" ? `<p class="hintline" style="margin:-4px 0 8px">Saat yalnızca mesai saatlerinde (${esc((t.slaHours||S.sla.hours).start)}–${esc((t.slaHours||S.sla.hours).end)}) işler.</p>` : `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat kesintisiz (7/24) işler.</p>`}
+  ${m.win === "std" ? `<p class="hintline" style="margin:-4px 0 8px">Saat yalnızca mesai saatlerinde (${esc((t.slaHours||S.sla.hours).start)}–${esc((t.slaHours||S.sla.hours).end)}) işler.</p>` : (coverageOf(t) ? `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat yalnızca destek saatlerinde (${esc(coverageOf(t).start)}–${esc(coverageOf(t).end)}) işler; gece duruyor.</p>` : `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat kesintisiz (7/24) işler.</p>`)}
   ${m.waiting ? `<div class="notice" style="margin-bottom:8px">Kullanıcı yanıtı bekleniyor: SLA saati durdu. Talep sahibi yanıt yazınca çağrı otomatik olarak devam eder.</div>` : ""}
   ${m.pausedMs > 0 ? `<p class="hintline" style="margin:-2px 0 8px">Toplam kullanıcı beklemesi: <b>${fmtDur(m.pausedMs)}</b> (SLA'dan düşüldü)</p>` : ""}
   <div class="sla-chips">${chip("claim","Sahiplenme",m.claim)}${chip("response","İlk teknik müdahale",m.response)}${chip("resolve","Çözüm",m.resolve, m.done && m.method === "onsite")}</div>`;
@@ -2572,6 +2590,10 @@ function renderDialog(force = true){
         <div class="fld"><span>Talep tipi <span class="req">*</span> <span class="vis">· ${POOLS[dlg.pool].label} havuzu</span></span>
           <div class="rtypes">${typesOf(dlg.pool).filter(([k]) => canOpenType(k)).map(([k,T]) => `<label class="rtype"><input type="radio" name="ctype" value="${k}" ${dlg.type===k?"checked":""}><span><b>${esc(T.label)}</b><small>${esc(T.hint)}</small></span></label>`).join("")}</div></div>
         ${dlg.type && TYPES[dlg.type] && TYPES[dlg.type].pool === dlg.pool ? formInputs() : ""}
+        ${!isStaff() ? `<div class="row2">
+          <label class="fld"><span>Adın soyadın <span class="req">*</span></span><input class="inp" id="c-cname" value="${esc(dlg.cname || "")}" autocomplete="name" placeholder="Ör. Ayşe Yılmaz"></label>
+          <label class="fld"><span>Telefonun <span class="req">*</span></span><input class="inp" id="c-cphone" type="tel" value="${esc(dlg.cphone || "")}" autocomplete="tel" placeholder="0532 123 45 67"></label>
+        </div><small class="hintline" style="margin-top:-8px">Destek ekibi gerektiğinde sana bu bilgilerle ulaşır. Bir sonraki talepte otomatik doldurulur.</small>` : ""}
         <label class="fld"><span>Başlık <span class="req">*</span></span><input class="inp" id="c-title" value="${esc(dlg.title)}" placeholder="Örn. Giriş sayfasında şifre sıfırlama hatası"></label>
         <label class="fld"><span>Kategori ${isRequester() ? `<span class="req">*</span>` : `<span style="color:var(--muted);font-weight:400">(isteğe bağlı)</span>`}</span>
           ${activeCats().length ? `<select class="inp" id="c-cat"><option value="">${isRequester() ? "Kategori seç" : "Kategorisiz"}</option>${activeCats().map(c => `<option value="${esc(c.id)}" ${c.id===dlg.category?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`
@@ -2824,6 +2846,8 @@ function captureDialog(){
   if(dlg.kind === "create"){
     dlg.title = $("#c-title")?.value ?? dlg.title;
     dlg.category = $("#c-cat")?.value ?? dlg.category;
+    dlg.cname = $("#c-cname")?.value ?? dlg.cname;
+    dlg.cphone = $("#c-cphone")?.value ?? dlg.cphone;
     if(dlg.type){ dlg.form = dlg.form || {}; formFor(dlg.type).forEach(f => { const el = $("#cf-" + f.id); if(el) dlg.form[f.id] = el.value; }); }
     const ct = document.querySelector('input[name="ctype"]:checked'); if(ct) dlg.type = ct.value;
     dlg.type = $("#c-type")?.value ?? dlg.type;
@@ -3156,7 +3180,9 @@ document.addEventListener("click", async e => {
     }
     case "create":
       if(S.readOnly) return toast("Bu panoda talep oluşturma iznin yok.", true);
-      dlg = {kind:"create", pool:createPools()[0], title:"", type:null, priority:"medium", assignee:null, category:"", description:"", error:""}; renderDialog(); break;
+      { let last = {}; try{ last = JSON.parse(localStorage.getItem(contactKey()) || "{}"); }catch(_){}
+        dlg = {kind:"create", pool:createPools()[0], title:"", type:null, priority:"medium", assignee:null, category:"", description:"", error:"", cname:last.name || "", cphone:last.phone || ""}; }
+      renderDialog(); break;
     case "open": if(dragId) return; S.mvSel = ""; S.open = id; S.tab = "comments"; renderDrawer(); setTimeout(() => $(".drawer .icon-btn[data-act=close]")?.focus(), 0);
       api("GET", `/tickets/${id}`).then(r => putTicket(r.ticket)).catch(() => {}); break;
     case "close": S.open = null; renderDrawer(); break;
@@ -3194,6 +3220,11 @@ document.addEventListener("click", async e => {
       captureDialog();
       if(!dlg.title.trim()){ dlg.error = "Başlık gerekli."; dlg.focused = false; renderDialog(); return; }
       if(isRequester() && !activeCats().length){ dlg.error = "Kategori tanımlanmadığı için talep açılamıyor. Yöneticine başvur."; renderDialog(); return; }
+      if(!isStaff()){
+        const nm = (dlg.cname || "").trim(), ph = (dlg.cphone || "").replace(/\D/g, "");
+        if(nm.split(/\s+/).length < 2){ dlg.error = "Adını ve soyadını yazmalısın."; renderDialog(); $("#c-cname")?.focus(); return; }
+        if(ph.length < 10 || ph.length > 13){ dlg.error = "Geçerli bir telefon numarası yazmalısın (ör. 0532 123 45 67)."; renderDialog(); $("#c-cphone")?.focus(); return; }
+      }
       if(isRequester() && !dlg.category){ dlg.error = "Bir kategori seçmelisin."; renderDialog(); $("#c-cat")?.focus(); return; }
       if(!dlg.type || !TYPES[dlg.type] || TYPES[dlg.type].pool !== dlg.pool){ dlg.error = "Bir talep tipi seçmelisin."; renderDialog(); return; }
       { const miss = formFor(dlg.type).filter(f => f.required && !String((dlg.form||{})[f.id] ?? "").trim());
@@ -3203,7 +3234,8 @@ document.addEventListener("click", async e => {
       const first = S.wf.statuses[0];
       el.disabled = true;
       try{
-        const body = {type:dlg.type, title:dlg.title.trim(), description:dlg.description.trim(), category:dlg.category || null, priority:dlg.priority,
+        if(!isStaff()) try{ localStorage.setItem(contactKey(), JSON.stringify({name:dlg.cname.trim(), phone:dlg.cphone.trim()})); }catch(_){}
+        const body = {contact: isStaff() ? null : {name:dlg.cname.trim(), phone:dlg.cphone.trim()}, type:dlg.type, title:dlg.title.trim(), description:dlg.description.trim(), category:dlg.category || null, priority:dlg.priority,
           assignee: isStaff() && dlg.assignee ? dlg.assignee : null, form: dlg.form || {}};
         const files = (dlg.files || []).slice();
         const r = await api("POST", "/tickets", body);
@@ -3370,6 +3402,13 @@ document.addEventListener("change", e => {
       if(hm(nh.start) >= hm(nh.end)){ el.value = cfg.hours[k]; return toast("Mesai bitişi başlangıçtan sonra olmalı.", true); }
       cfg.hours[k] = el.value;
     }
+    else if(a === "sla-cov247"){ cfg.coverage = el.checked ? null : clone(DEFAULT_COVERAGE); }
+    else if(a === "sla-cstart" || a === "sla-cend"){
+      if(!el.value) return; const c = cfg.coverage || clone(DEFAULT_COVERAGE), k = a === "sla-cstart" ? "start" : "end"; const nc = {...c, [k]:el.value};
+      if(hm(nc.start) >= hm(nc.end)){ el.value = c[k]; return toast("Bitiş başlangıçtan sonra olmalı.", true); }
+      cfg.coverage = nc;
+    }
+    else if(a === "sla-cday"){ const c = cfg.coverage || clone(DEFAULT_COVERAGE), d = +el.dataset.d; c.days = el.checked ? [...new Set([...c.days, d])] : c.days.filter(x => x !== d); if(!c.days.length){ el.checked = true; return toast("En az bir gün seçili kalmalı.", true); } cfg.coverage = c; }
     else if(a === "sla-reopen"){ const v = Math.round(+el.value); if(!(v >= 1 && v <= 30)){ el.value = cfg.reopenDays || 5; return toast("Süre 1 ile 30 iş günü arasında olmalı.", true); } cfg.reopenDays = v; }
     else if(a === "sla-day"){ const d = +el.dataset.d; cfg.hours.days = el.checked ? [...new Set([...cfg.hours.days, d])] : cfg.hours.days.filter(x => x !== d); }
     saveSla(cfg); toast("SLA ayarları kaydedildi"); return;
