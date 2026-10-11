@@ -1123,16 +1123,19 @@ function stampSla(t){
      only runs during business hours; it pauses in the evening, at weekends and on non-working days;
    - a call opened outside business hours is covered by the out-of-hours (on-call) targets, measured
      on a continuous 24/7 clock. */
+// {start,end,days} ya da {schedule:{gün:{start,end}}} -> {gün:{start,end}}
+function schedOf(h){ if(!h) return null; if(h.schedule) return h.schedule; const o = {}; (h.days || []).forEach(d => o[d] = {start:h.start, end:h.end}); return o; }
 function bizMs(a, b, hours){
   if(!(b > a)) return 0;
-  const hs = hours || S.sla.hours, s0 = hm(hs.start), e0 = hm(hs.end);
+  const sc = schedOf(hours || S.sla.hours); if(!sc) return b - a;
   const d = new Date(a); d.setHours(0,0,0,0);
   let total = 0, guard = 0;
   while(d.getTime() < b && guard++ < 4000){
-    if(hs.days.includes(d.getDay())){
+    const w = sc[d.getDay()];
+    if(w){
       const base = d.getTime();
-      const ws = new Date(base); ws.setHours(0, s0, 0, 0);
-      const we = new Date(base); we.setHours(0, e0, 0, 0);
+      const ws = new Date(base); ws.setHours(0, hm(w.start), 0, 0);
+      const we = new Date(base); we.setHours(0, hm(w.end), 0, 0);
       const lo = Math.max(a, ws.getTime()), hi = Math.min(b, we.getTime());
       if(hi > lo) total += hi - lo;
     }
@@ -1141,9 +1144,9 @@ function bizMs(a, b, hours){
   return total;
 }
 // Mesai dışı destek saatleri (ör. 08:00–22:00): bu saatler dışında SLA saati hiç işlemez. null = 7/24.
-const DEFAULT_COVERAGE = {start:"08:00", end:"22:00", days:[0,1,2,3,4,5,6]};
+const DEFAULT_COVERAGE = {schedule:{1:{start:"09:00",end:"22:00"},2:{start:"09:00",end:"22:00"},3:{start:"09:00",end:"22:00"},4:{start:"09:00",end:"22:00"},5:{start:"09:00",end:"22:00"},6:{start:"09:30",end:"22:00"},0:{start:"09:30",end:"22:00"}}};
 function coverageOf(t){ return t && t.slaCoverage !== undefined ? t.slaCoverage : (S.sla && S.sla.coverage !== undefined ? S.sla.coverage : DEFAULT_COVERAGE); }
-function inHours(hs, ts){ if(!hs) return true; const d = new Date(ts), m = d.getHours()*60 + d.getMinutes(); return hs.days.includes(d.getDay()) && m >= hm(hs.start) && m < hm(hs.end); }
+function inHours(hs, ts){ const sc = schedOf(hs); if(!sc) return true; const d = new Date(ts), m = d.getHours()*60 + d.getMinutes(), w = sc[d.getDay()]; return !!w && m >= hm(w.start) && m < hm(w.end); }
 function clockMs(t, win, from, to){ if(win === "std") return bizMs(from, to, t.slaHours); const c = coverageOf(t); return c ? bizMs(from, to, c) : Math.max(0, to - from); }
 function pauseIds(){ return new Set(S.wf.statuses.filter(s => s.pausesSla).map(s => s.id)); }
 // periods the call spent in a status that pauses the SLA ("waiting for the requester")
@@ -1173,7 +1176,7 @@ function clockRunning(t, win){
 function slaMetrics(t){
   const win = t.slaWindow || (isBusinessTime(t.slaStart || t.createdAt) ? "std" : "off");
   const lim = t.slaLimits || limitsFor(win);
-  const c0 = t.slaStart || t.createdAt, now = Date.now();
+  const c0 = Math.max(t.slaStart || t.createdAt, t.slaClockStart || 0), now = Date.now();
   const claimedAt = t.claimedAt || firstHist(t, h => h.field === "assignee" && h.to);
   let respAt = t.firstResponseAt;
   if(!respAt){
@@ -1244,7 +1247,8 @@ function mergeSla(x){
   if(x && x.hours) Object.assign(d.hours, x.hours);
   if(x && x.criteria) SLA_KEYS.forEach(k => Object.assign(d.criteria[k], x.criteria[k] || {}));
   d.reopenDays = x && x.reopenDays >= 1 ? x.reopenDays : 5;
-  d.coverage = x && x.coverage !== undefined ? x.coverage : clone(DEFAULT_COVERAGE);
+  // eski biçim ({start,end,days}) gün bazlı biçime çevrilir; null = 7/24
+  d.coverage = x && x.coverage !== undefined ? (x.coverage ? {schedule: schedOf(x.coverage)} : null) : clone(DEFAULT_COVERAGE);
   return d;
 }
 function saveSla(cfg){ S.sla = cfg; renderAll(); putConfig("sla", cfg); }
@@ -2250,13 +2254,15 @@ function renderSlaAdmin(){
     </div>
     <p class="sub" style="margin:10px 0 0">Bu saatler dışında ve işaretli olmayan günlerde açılan çağrılar mesai dışı sayılır.</p>
     <h3 class="sec-t" style="margin-top:18px">Mesai dışı destek saatleri</h3>
-    ${(() => { const c = S.sla.coverage; return `<div class="hours">
-      <label class="chk" style="color:var(--ink)"><input type="checkbox" data-act="sla-cov247" ${c ? "" : "checked"} ${ro}> 7/24 kesintisiz</label>
-      ${c ? `<label class="chk" style="color:var(--ink)">Başlangıç <input class="inp" type="time" value="${esc(c.start)}" data-act="sla-cstart" ${ro}></label>
-      <label class="chk" style="color:var(--ink)">Bitiş <input class="inp" type="time" value="${esc(c.end)}" data-act="sla-cend" ${ro}></label>
-      <span style="display:flex;gap:10px;flex-wrap:wrap">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="sla-cday" data-d="${d}" ${c.days.includes(d)?"checked":""} ${ro}> ${l}</label>`).join("")}</span>` : ""}
-    </div>`; })()}
-    <p class="sub" style="margin:8px 0 0">Mesai dışında açılan çağrılarda SLA saati yalnızca bu saatlerde işler. Örneğin 08:00–22:00 seçiliyse 22:00'den sonra açılan çağrının saati ertesi sabah 08:00'de başlar; o saat mesai içindeyse standart hedefler uygulanır.</p>
+    ${(() => { const c = S.sla.coverage, sc = schedOf(c);
+      return `<label class="chk" style="color:var(--ink);margin-bottom:8px"><input type="checkbox" data-act="sla-cov247" ${c ? "" : "checked"} ${ro}> 7/24 kesintisiz (gece de işler)</label>
+      ${c ? `<div class="tablewrap" style="max-width:520px"><table style="min-width:0"><thead><tr><th>Gün</th><th>Vardiya var</th><th>Başlangıç</th><th>Bitiş</th></tr></thead><tbody>
+        ${DAYS.map(([d,l]) => { const w = sc[d]; return `<tr><td><b style="font-weight:600">${l}</b></td>
+          <td><input type="checkbox" data-act="sla-cv" data-d="${d}" data-f="on" ${w ? "checked" : ""} ${ro} aria-label="${l} vardiya"></td>
+          <td>${w ? `<input class="inp" type="time" value="${esc(w.start)}" data-act="sla-cv" data-d="${d}" data-f="start" ${ro} style="width:auto">` : `<span class="hintline">—</span>`}</td>
+          <td>${w ? `<input class="inp" type="time" value="${esc(w.end)}" data-act="sla-cv" data-d="${d}" data-f="end" ${ro} style="width:auto">` : `<span class="hintline">—</span>`}</td></tr>`; }).join("")}
+      </tbody></table></div>` : ""}`; })()}
+    <p class="sub" style="margin:8px 0 0">Vardiya dışında açılan çağrının SLA saati bir sonraki vardiya başlangıcında başlar: örneğin cuma 23:10'da açılan çağrı cumartesi 09:30'da, pazar 23:10'da açılan pazartesi 09:00'da saymaya başlar. Başladığı an mesai içindeyse standart, değilse mesai dışı hedefler uygulanır. Mesai dışı çağrılarda saat yalnızca vardiya saatlerinde işler.</p>
     <h3 class="sec-t" style="margin-top:18px">Çözülmedi bildirimi</h3>
     <div class="hours"><label class="chk" style="color:var(--ink)">Kapanıştan sonra <input class="inp" type="number" min="1" max="30" style="width:76px" value="${S.sla.reopenDays || 5}" data-act="sla-reopen" ${ro}> iş günü</label></div>
     <p class="sub" style="margin:8px 0 0">Talep sahibi bu süre içinde “Çözülmedi” diyerek kapanan çağrıyı yeniden açabilir; süre dolunca düğme pasifleşir. İş günleri yukarıdaki mesai günlerine göre sayılır.</p>
@@ -2473,7 +2479,7 @@ function slaChips(t){
     return `<div class="chip ${left < 0 ? "bad" : left < lim*15000 ? "warn" : ""}"><div class="c-l">${label}</div>${left < 0 ? `<b>${fmtDur(-left)}</b> aşıldı` : `<b>${fmtDur(left)}</b> kaldı`} <span class="vis">/ ${fmtMin(lim)}${m.waiting ? " · beklemede" : m.running ? "" : " · saat durdu"}</span></div>`;
   };
   return `<h3 class="sec-t">SLA <span class="win ${m.win}">${m.win === "std" ? "Standart mesai" : "Mesai dışı"}</span></h3>
-  ${m.win === "std" ? `<p class="hintline" style="margin:-4px 0 8px">Saat yalnızca mesai saatlerinde (${esc((t.slaHours||S.sla.hours).start)}–${esc((t.slaHours||S.sla.hours).end)}) işler.</p>` : (coverageOf(t) ? `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat yalnızca destek saatlerinde (${esc(coverageOf(t).start)}–${esc(coverageOf(t).end)}) işler; gece duruyor.</p>` : `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat kesintisiz (7/24) işler.</p>`)}
+  ${m.win === "std" ? `<p class="hintline" style="margin:-4px 0 8px">Saat yalnızca mesai saatlerinde (${esc((t.slaHours||S.sla.hours).start)}–${esc((t.slaHours||S.sla.hours).end)}) işler.</p>` : (coverageOf(t) ? `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat yalnızca vardiya saatlerinde işler; gece duruyor.</p>` : `<p class="hintline" style="margin:-4px 0 8px">Mesai dışı çağrı: saat kesintisiz (7/24) işler.</p>`)}
   ${m.waiting ? `<div class="notice" style="margin-bottom:8px">Kullanıcı yanıtı bekleniyor: SLA saati durdu. Talep sahibi yanıt yazınca çağrı otomatik olarak devam eder.</div>` : ""}
   ${m.pausedMs > 0 ? `<p class="hintline" style="margin:-2px 0 8px">Toplam kullanıcı beklemesi: <b>${fmtDur(m.pausedMs)}</b> (SLA'dan düşüldü)</p>` : ""}
   <div class="sla-chips">${chip("claim","Sahiplenme",m.claim)}${chip("response","İlk teknik müdahale",m.response)}${chip("resolve","Çözüm",m.resolve, m.done && m.method === "onsite")}</div>`;
@@ -3403,12 +3409,12 @@ document.addEventListener("change", e => {
       cfg.hours[k] = el.value;
     }
     else if(a === "sla-cov247"){ cfg.coverage = el.checked ? null : clone(DEFAULT_COVERAGE); }
-    else if(a === "sla-cstart" || a === "sla-cend"){
-      if(!el.value) return; const c = cfg.coverage || clone(DEFAULT_COVERAGE), k = a === "sla-cstart" ? "start" : "end"; const nc = {...c, [k]:el.value};
-      if(hm(nc.start) >= hm(nc.end)){ el.value = c[k]; return toast("Bitiş başlangıçtan sonra olmalı.", true); }
-      cfg.coverage = nc;
+    else if(a === "sla-cv"){
+      const c = cfg.coverage ? {schedule: clone(schedOf(cfg.coverage))} : clone(DEFAULT_COVERAGE), d = el.dataset.d, f = el.dataset.f;
+      if(f === "on"){ if(el.checked) c.schedule[d] = c.schedule[d] || {start:"09:00", end:"22:00"}; else { delete c.schedule[d]; if(!Object.keys(c.schedule).length){ el.checked = true; return toast("En az bir gün vardiya olmalı.", true); } } }
+      else { if(!el.value) return; const w = {...c.schedule[d], [f]: el.value}; if(hm(w.start) >= hm(w.end)){ el.value = c.schedule[d][f]; return toast("Bitiş başlangıçtan sonra olmalı.", true); } c.schedule[d] = w; }
+      cfg.coverage = c;
     }
-    else if(a === "sla-cday"){ const c = cfg.coverage || clone(DEFAULT_COVERAGE), d = +el.dataset.d; c.days = el.checked ? [...new Set([...c.days, d])] : c.days.filter(x => x !== d); if(!c.days.length){ el.checked = true; return toast("En az bir gün seçili kalmalı.", true); } cfg.coverage = c; }
     else if(a === "sla-reopen"){ const v = Math.round(+el.value); if(!(v >= 1 && v <= 30)){ el.value = cfg.reopenDays || 5; return toast("Süre 1 ile 30 iş günü arasında olmalı.", true); } cfg.reopenDays = v; }
     else if(a === "sla-day"){ const d = +el.dataset.d; cfg.hours.days = el.checked ? [...new Set([...cfg.hours.days, d])] : cfg.hours.days.filter(x => x !== d); }
     saveSla(cfg); toast("SLA ayarları kaydedildi"); return;
