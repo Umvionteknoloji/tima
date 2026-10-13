@@ -78,7 +78,7 @@ a{color:var(--accent)}
       <span>TIMA<small>Platform yönetimi</small></span></div>
     <span class="spacer"></span>
     <span id="who" class="hint"></span>
-    <span class="hint" id="ver">Panel 1.2.5</span>
+    <span class="hint" id="ver">Panel 1.3.0</span>
     <button class="btn sm" id="logout" hidden>Çıkış yap</button>
   </div>
 
@@ -290,7 +290,7 @@ function show(which){
 async function start(){
   try{
     const st = await api("GET", "/status");
-    $("#ver").textContent = `Panel 1.2.5 · API ${st.version}`;
+    $("#ver").textContent = `Panel 1.3.0 · API ${st.version}`;
     if(!st.setupDone){ show("setup"); return; }
     if(token){ show("main"); await loadAll(); } else show("login");
   }catch(e){ show("login"); $("#l-err").textContent = e.message; }
