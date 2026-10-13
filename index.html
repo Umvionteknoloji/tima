@@ -102,6 +102,10 @@ button{cursor:pointer}
 .ho-h{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .ho-d{display:flex;gap:8px;flex-wrap:wrap;font-size:12.5px}
 .ro-val{display:inline-flex;align-items:center;gap:8px}
+.act-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}
+.adm-mv{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);width:100%}
+.big-start{font-size:15px;padding:9px 18px}
+.pre-title{margin:4px 0 6px;font-size:20px;line-height:1.3}
 .aslist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:260px;overflow:auto}
 .asrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
 .asrow:first-child{border-top:0}
@@ -720,7 +724,7 @@ td.t{font-weight:500;max-width:420px}
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.5";
+const APP_VERSION = "1.3.0";
 /* ---------------- API ---------------- */
 // Arka uç adresi. Test için localStorage'da "tima-api" anahtarıyla değiştirilebilir.
 const API_BASE = (localStorage.getItem("tima-api") || "https://tima-api.serdox.workers.dev/api").replace(/\/$/, "");
@@ -1211,6 +1215,10 @@ function slaMetrics(t){
   const end = resolvedAt || now;
   const pauses = pauseIntervals(t, end);
   const span = to => slaSpan(t, win, c0, to, pauses);
+  // çözüm süresi ayara göre açılıştan ya da "Başla"dan sayılır
+  const r0 = (S.sla.resolveFrom || "start") === "start" ? (t.startedAt ? Math.max(c0, t.startedAt) : null) : c0;
+  const notStarted = r0 == null && !done;
+  const rspan = to => r0 == null ? 0 : slaSpan(t, win, r0, to, pauses);
   const waiting = !done && pauseIds().has(t.status);
   const running = !done && !waiting && clockRunning(t, win);
   const pausedMs = pauses.reduce((sum, [a,b]) => sum + clockMs(t, win, Math.max(a, c0), Math.min(b, end)), 0);
@@ -1218,11 +1226,11 @@ function slaMetrics(t){
     pauseReason: done ? null : waiting ? "wait" : running ? null : "off",
     claim: claimedAt ? span(claimedAt) : null,
     response: respAt ? span(respAt) : null,
-    resolve: resolvedAt ? span(resolvedAt) : null,
+    resolve: resolvedAt ? rspan(resolvedAt) : null, resolveStarted: !notStarted,
     // time spent so far on targets that are still open (null when already met or the call is closed)
     liveClaim: !claimedAt && !done ? span(now) : null,
     liveResponse: !respAt && !done ? span(now) : null,
-    liveResolve: !done ? span(now) : null, handedOver: !!t.handover};
+    liveResolve: !done && !notStarted ? rspan(now) : null, handedOver: !!t.handover};
 }
 // devir hedefi (ör. depo gönderimi): mesai saatleriyle
 function handoverRule(roleId){ return (S.handover || []).find(r => r.roleId === roleId); }
@@ -1278,6 +1286,7 @@ function mergeSla(x){
   if(x && x.hours) Object.assign(d.hours, x.hours);
   if(x && x.criteria) SLA_KEYS.forEach(k => Object.assign(d.criteria[k], x.criteria[k] || {}));
   d.reopenDays = x && x.reopenDays >= 1 ? x.reopenDays : 5;
+  d.resolveFrom = x && x.resolveFrom === "created" ? "created" : "start";
   // eski biçim ({start,end,days}) gün bazlı biçime çevrilir; null = 7/24
   d.coverage = x && x.coverage !== undefined ? (x.coverage ? {schedule: schedOf(x.coverage)} : null) : clone(DEFAULT_COVERAGE);
   return d;
@@ -2046,7 +2055,7 @@ function miniCard(t){
 }
 function card(t){
   const done = cat(t.status) === "done";
-  return `<button class="card ${done?"is-done":""} ${dragId===t.id?"dragging":""}" draggable="${!S.readOnly && isStaff()}" data-act="open" data-id="${t.id}" data-drag="${t.id}">
+  return `<button class="card ${done?"is-done":""} ${dragId===t.id?"dragging":""}" draggable="${!S.readOnly && isAdmin()}" data-act="open" data-id="${t.id}" data-drag="${t.id}">
     <span class="card-t">${esc(t.title)}</span>
     ${catTag(t.category)}
     <span class="card-m">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span>${priIcon(t.priority)}<span class="spacer"></span>${avatar(t.assignee)}</span>
@@ -2163,13 +2172,14 @@ function renderHandoverAdmin(){
   return `<section class="panel">
     <div class="adm-h"><div><h2>Devir kuralları</h2><p class="sub" style="margin:4px 0 0">Bir çağrı seçtiğin roldeki birine (ör. <b>Depo personeli</b>) atandığında: durumu otomatik olarak kuraldaki duruma geçer, destek ekibinin SLA'sı o anda tamamlanmış sayılır ve bu rol için ayrı bir hedef süre başlar. Hedef süre yalnızca kuralda seçtiğin gün ve saatlerde sayılır. Bitiş saatini ekibin o gün iş çıkarabileceği son saat olarak gir: örneğin kargo kabulü 16:30'da kapanıyorsa 16:30. Bu saatten sonra ya da hafta sonu gelen çağrının süresi bir sonraki çalışma günü başlangıcında başlar.</p></div>
       <span class="spacer"></span><button class="btn" data-act="ho-add" ${ro}>+ Kural ekle</button></div>
-    ${rules.length ? `<div class="tablewrap"><table style="min-width:600px"><thead><tr><th>Rol</th><th>Atanınca durum</th><th>Hedef süre</th><th>Sayılan saatler (son kabul)</th><th></th></tr></thead><tbody>
+    ${rules.length ? `<div class="tablewrap"><table style="min-width:600px"><thead><tr><th>Rol</th><th>Atanınca durum</th><th>Destek SLA'sı</th><th>Hedef süre</th><th>Sayılan saatler (son kabul)</th><th></th></tr></thead><tbody>
       ${rules.map((r,i) => `<tr>
         <td><select class="inp" data-act="ho-f" data-i="${i}" data-f="roleId" ${ro}>${staffRoles.map(x => `<option value="${esc(x.id)}" ${r.roleId === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></td>
         <td><input class="inp" value="${esc(r.statusName)}" data-act="ho-f" data-i="${i}" data-f="statusName" ${ro}></td>
-        <td><div class="slain"><input class="inp" type="number" min="1" max="720" step="1" style="width:80px" value="${esc(r.targetHours)}" data-act="ho-f" data-i="${i}" data-f="targetHours" ${ro}><small>saat</small></div></td>
+        <td><label class="chk" style="color:var(--ink);white-space:nowrap"><input type="checkbox" data-act="ho-f" data-i="${i}" data-f="endsSla" ${r.endsSla !== false ? "checked" : ""} ${ro}> Biter, ayrı hedef başlar</label></td>
+        ${r.endsSla === false ? `<td><span class="hintline">Destek SLA'sı devam eder</span></td><td><span class="hintline">—</span></td>` : `<td><div class="slain"><input class="inp" type="number" min="1" max="720" step="1" style="width:80px" value="${esc(r.targetHours)}" data-act="ho-f" data-i="${i}" data-f="targetHours" ${ro}><small>saat</small></div></td>
         <td>${(() => { const h = r.hours || S.sla.hours; return `<div class="ho-h"><input class="inp" type="time" value="${esc(h.start)}" data-act="ho-f" data-i="${i}" data-f="h-start" ${ro} style="width:auto"> – <input class="inp" type="time" value="${esc(h.end)}" data-act="ho-f" data-i="${i}" data-f="h-end" ${ro} style="width:auto"></div>
-          <div class="ho-d">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="ho-f" data-i="${i}" data-f="h-day" data-d="${d}" ${h.days.includes(d) ? "checked" : ""} ${ro}> ${l}</label>`).join("")}</div>`; })()}</td>
+          <div class="ho-d">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="ho-f" data-i="${i}" data-f="h-day" data-d="${d}" ${h.days.includes(d) ? "checked" : ""} ${ro}> ${l}</label>`).join("")}</div>`; })()}</td>`}
         <td style="text-align:right"><button class="btn sm ghost danger" data-act="ho-del" data-i="${i}" ${ro}>Sil</button></td></tr>`).join("")}
     </tbody></table></div>` : `<p class="sub" style="margin:0">Henüz kural yok. Örnek: Depo personeli → “Depoda · gönderim bekleniyor” → 12 saat.</p>`}
   </section>`;
@@ -2312,6 +2322,9 @@ function renderSlaAdmin(){
       <span style="display:flex;gap:10px;flex-wrap:wrap">${DAYS.map(([d,l]) => `<label class="chk"><input type="checkbox" data-act="sla-day" data-d="${d}" ${h.days.includes(d)?"checked":""} ${ro}> ${l}</label>`).join("")}</span>
     </div>
     <p class="sub" style="margin:10px 0 0">Bu saatler dışında ve işaretli olmayan günlerde açılan çağrılar mesai dışı sayılır.</p>
+    <h3 class="sec-t" style="margin-top:18px">Çözüm süresi başlangıcı</h3>
+    <div class="hours"><select class="inp" data-act="sla-rfrom" ${ro} style="width:auto"><option value="start" ${S.sla.resolveFrom !== "created" ? "selected" : ""}>Personel “Başla”ya bastığında</option><option value="created" ${S.sla.resolveFrom === "created" ? "selected" : ""}>Çağrı açıldığında</option></select></div>
+    <p class="sub" style="margin:8px 0 0">“Başla” seçiliyse çözüm SLA'sı, çağrıya fiilen başlandığı andan tamamlandığı ana kadar ölçülür; başlamadan önce geçen süre sahiplenme ve ilk müdahale SLA'larında görünür.</p>
     <h3 class="sec-t" style="margin-top:18px">Mesai dışı destek saatleri</h3>
     ${(() => { const c = S.sla.coverage, sc = schedOf(c);
       return `<label class="chk" style="color:var(--ink);margin-bottom:8px"><input type="checkbox" data-act="sla-cov247" ${c ? "" : "checked"} ${ro}> 7/24 kesintisiz (gece de işler)</label>
@@ -2476,6 +2489,20 @@ function renderDrawer(){
   const comments = (t.comments||[]).filter(c => isStaff() || !c.internal).slice().reverse();
   const hist = (t.history||[]).slice().reverse();
   const P = PRIS.find(p => p.id === t.priority) || PRIS[2];
+  if(staff && !isAdmin() && !blocked(t) && cat(t.status) === "todo"){
+    // başlanmamış çağrı: ayrıntılar "Başla"ya kadar gizli
+    guardedSet(d, `
+    <div class="dr-h">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span>${pill(t.status)}<span class="spacer"></span>
+      <button class="icon-btn" data-act="close" aria-label="Kapat" title="Kapat">✕</button></div>
+    <div class="dr-b">
+      <h2 class="pre-title">${esc(t.title)}</h2>
+      <p class="hintline" style="margin:0 0 16px">${typeTag(t)} · ${esc(originLabel(t))}${t.location ? " · " + esc(t.location) : ""} · ${evDate(t.createdAt)}</p>
+      <div class="trans">${moveControl(t)}</div>
+      <p class="hintline">${t.assignee === meRef() ? "Açıklama, ekler ve yorumlar “Başla”ya bastığında açılır. Başla ile ilk müdahale tamamlanır ve çözüm süresi işlemeye başlar." : "Ayrıntılar, çağrıyı üstlenip “Başla”ya bastığında açılır."}</p>
+      ${slaChips(t)}
+    </div>`, true);
+    return;
+  }
   guardedSet(d, `
     <div class="dr-h">${typeIcon(t.type)}<span class="key">${esc(t.key)}</span>${blocked(t) ? apprTag(t) : pill(t.status)}<span class="spacer"></span>
       ${isAdmin() ? `<button class="btn sm ghost danger" data-act="del-ticket" data-id="${t.id}" ${ro}>Sil</button>` : ""}
@@ -2535,6 +2562,7 @@ function slaChips(t){
     if(na) return `<div class="chip"><div class="c-l">${label}</div>SLA dışı (yerinde)</div>`;
     if(val != null){ const ok = val <= lim*60000; return `<div class="chip ${ok?"ok":"bad"}"><div class="c-l">${label}</div><span class="dur ${ok?"ok":"bad"}">${fmtDur(val)}</span> <span class="vis">/ ${fmtMin(lim)}</span></div>`; }
     if(m.done) return `<div class="chip"><div class="c-l">${label}</div><span class="vis">Kayıt yok</span></div>`;
+    if(key === "resolve" && !m.resolveStarted) return `<div class="chip"><div class="c-l">${label}</div><span class="vis">“Başla”ya basılınca sayılır</span> <span class="vis">/ ${fmtMin(lim)}</span></div>`;
     const el = key === "claim" ? m.liveClaim : key === "response" ? m.liveResponse : m.liveResolve, left = lim*60000 - el;
     return `<div class="chip ${left < 0 ? "bad" : left < lim*15000 ? "warn" : ""}"><div class="c-l">${label}</div>${left < 0 ? `<b>${fmtDur(-left)}</b> aşıldı` : `<b>${fmtDur(left)}</b> kaldı`} <span class="vis">/ ${fmtMin(lim)}${m.waiting ? " · beklemede" : m.running ? "" : " · saat durdu"}</span></div>`;
   };
@@ -2549,19 +2577,34 @@ function slaChips(t){
     return `<h3 class="sec-t" style="margin-top:4px">${esc(h.roleName)} SLA <span class="vis">· ${fullDate(t.handover.at)} devredildi · destek SLA'sı bu anda tamamlandı</span></h3>
       <div class="sla-chips"><div class="chip ${h.done ? (h.ok ? "ok" : "bad") : (h.left < 0 ? "bad" : h.left < h.target*15000 ? "warn" : "")}"><div class="c-l">${esc(h.roleName)} hedefi</div>${st}</div></div>`; })()}`;
 }
+// Personelin işlem düğmeleri: durum bunlarla otomatik değişir. Elle durum değişikliği yalnızca yöneticide.
 function moveControl(t){
-  const ro = S.readOnly ? "disabled" : "";
-  if(!t.assignee) return `<span class="lbl" style="flex:1">Bu çağrı henüz üstlenilmedi. Durumunu değiştirmek için önce üzerine al.</span>
-    <button class="btn primary sm" data-act="claim" data-id="${t.id}" ${ro}>Üstlen</button>`;
-  const targets = moveTargets(t);
-  if(!targets.length) return `<span class="lbl">Bu durumdan gidilebilecek başka durum yok.</span>`;
-  const sel = targets.some(s => s.id === S.mvSel) ? S.mvSel : "";
-  return `<div class="mv"><label class="lbl" for="mv-sel">Durumu değiştir</label>
-    <select class="sel" id="mv-sel" ${ro}><option value="">Durum seç</option>
-      ${targets.map(s => { const tr = findTransition(t.status, s.id); return `<option value="${s.id}" ${s.id===sel?"selected":""}>${esc(s.name)}${cat(s.id)==="done" ? "  (kapat)" : ""}${tr && tr.name !== s.name ? `  · ${esc(tr.name)}` : ""}</option>`; }).join("")}
-    </select>
-    <button class="btn primary sm" data-act="mv-apply" data-id="${t.id}" ${ro}>Uygula</button>
-    <span class="spacer"></span><button class="btn sm" data-act="assign-open" data-id="${t.id}" ${ro}>Çağrıyı ata</button></div>`;
+  const ro = S.readOnly ? "disabled" : "", me = meRef(), c = cat(t.status), admin = isAdmin();
+  const reopened = t.status === "reopened";
+  let main = "";
+  if(c === "done") main = `<span class="lbl" style="flex:1">Çağrı tamamlandı.</span>`;
+  else if(!t.assignee) main = `<span class="lbl" style="flex:1">${reopened ? "Talep sahibi “Çözülmedi” dedi; çağrı yeniden havuzda." : "Bu çağrı henüz üstlenilmedi."}</span>
+    <button class="btn primary" data-act="claim" data-id="${t.id}" ${ro}>Üstlen</button>`;
+  else if(c === "todo") main = t.assignee === me || admin
+    ? `<span class="lbl" style="flex:1">${reopened ? "Yeniden açılan çağrı üzerinde. Çalışmaya başlamak için:" : "Çağrı üzerinde. Çalışmaya başlamak için:"}</span>
+       <button class="btn primary big-start" data-act="start" data-id="${t.id}" ${ro}>▶ ${reopened ? "Tekrar başla" : "Başla"}</button>`
+    : `<span class="lbl" style="flex:1">${esc(personName(t.assignee))} üstlendi, henüz başlamadı.</span>`;
+  else {
+    const waiting = pauseIds().has(t.status);
+    main = `<span class="lbl" style="flex:1">${waiting ? "Talep sahibinin yanıtı bekleniyor; yanıt gelince çağrı otomatik devam eder." : "İşlem:"}</span>
+      ${waiting ? "" : `<button class="btn sm" data-act="ask-open" data-id="${t.id}" ${ro}>Soru sor</button>`}
+      <button class="btn sm" data-act="assign-open" data-id="${t.id}" ${ro}>Çağrıyı ata</button>
+      <button class="btn primary sm" data-act="complete" data-id="${t.id}" ${ro}>Tamamla</button>`;
+  }
+  let adminRow = "";
+  if(admin){
+    const targets = moveTargets(t);
+    const sel = targets.some(x => x.id === S.mvSel) ? S.mvSel : "";
+    adminRow = targets.length ? `<div class="mv adm-mv"><label class="lbl" for="mv-sel">Durumu elle değiştir <span class="vis">(yönetici)</span></label>
+      <select class="sel" id="mv-sel" ${ro}><option value="">Durum seç</option>${targets.map(x => `<option value="${x.id}" ${x.id===sel?"selected":""}>${esc(x.name)}${cat(x.id)==="done" ? "  (kapat)" : ""}</option>`).join("")}</select>
+      <button class="btn sm" data-act="mv-apply" data-id="${t.id}" ${ro}>Uygula</button></div>` : "";
+  }
+  return `<div class="mv act-bar">${main}</div>${adminRow}`;
 }
 function solutionBox(t){
   const sols = (t.comments||[]).filter(c => c.kind === "solution");
@@ -2773,6 +2816,18 @@ function renderDialog(force = true){
         <button class="btn sm" data-act="dlg-cancel" aria-label="Kapat">✕</button></div>
       <div class="pv-body pv-${pk}">${body}</div>
     </div>`;
+  } else if(dlg.kind === "ask"){
+    const tk = S.tickets[dlg.ticketId]; if(!tk){ dlg = null; w.remove(); return; }
+    html = `<div class="scrim" data-act="dlg-cancel" style="z-index:49"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgt">
+      <div class="dl-h"><h3 id="dlgt">Talep sahibine soru sor</h3><p class="dl-sub"><span class="key">${esc(tk.key)}</span> · ${esc(tk.title)} · ${esc(personName(tk.reporter))}</p></div>
+      <div class="dl-b">
+        <label class="fld"><span>Sorun <span class="req">*</span></span><textarea class="desc" id="ask-text" style="min-height:110px" placeholder="Ör. Cihazın seri numarasını ve ekrandaki hata mesajını yazar mısınız?">${esc(dlg.text || "")}</textarea></label>
+        <p class="hintline" style="margin:0">Durum “Kullanıcıdan yanıt bekleniyor” olur ve SLA saati durur. Talep sahibine e-posta gider; yanıt yazınca çağrı otomatik olarak kaldığı durumdan devam eder.</p>
+        ${dlg.error ? `<div class="err">${esc(dlg.error)}</div>` : ""}
+      </div>
+      <div class="dl-f"><button class="btn ghost" data-act="dlg-cancel">Vazgeç</button><button class="btn primary" data-act="ask-send">Gönder</button></div>
+    </div>`;
   } else if(dlg.kind === "assign"){
     const tk = S.tickets[dlg.ticketId]; if(!tk){ dlg = null; w.remove(); return; }
     const people = assignableIn(tk), byRole = {};
@@ -2908,7 +2963,7 @@ function renderDialog(force = true){
   if(guardedSet(w, html, force)){
     const keep = focusedId && w.querySelector("#"+focusedId);
     if(keep) keep.focus();
-    else if(!dlg.focused){ const f = w.querySelector("#c-title, #u-name, #ro-text, #pwc-cur, #ap-note, #pj-name, #tk-title, #d-cmt, .dl-f .btn.primary"); if(f) f.focus(); }
+    else if(!dlg.focused){ const f = w.querySelector("#c-title, #u-name, #ro-text, #ask-text, #pwc-cur, #ap-note, #pj-name, #tk-title, #d-cmt, .dl-f .btn.primary"); if(f) f.focus(); }
     dlg.focused = true;
   }
 }
@@ -3181,10 +3236,12 @@ document.addEventListener("click", async e => {
     case "u-import": openImport(); break;
     case "ho-add": { if(!isAdmin()) return; const used = new Set((S.handover||[]).map(r => r.roleId));
       const cand = rolesList().filter(r => r.base !== "requester" && !used.has(r.id));
-      const depo = cand.find(r => /depo/i.test(r.name)) || cand.find(r => !r.builtin) || cand[0];
+      const depo = cand.find(r => /depo/i.test(r.name)) || cand.find(r => /operasyon/i.test(r.name)) || cand.find(r => !r.builtin) || cand[0];
       if(!depo) return toast("Kural eklenecek rol kalmadı. Önce Roller bölümünden bir rol ekle.", true);
-      saveHandover([...(S.handover||[]), {roleId:depo.id, statusName: /depo/i.test(depo.name) ? "Depoda · gönderim bekleniyor" : depo.name + " · devredildi", targetHours:12,
-        hours: /depo/i.test(depo.name) ? {start:(S.sla.hours && S.sla.hours.start) || "08:00", end:"16:30", days:[1,2,3,4,5]} : clone(S.sla.hours)}]); break; }
+      const isOps = /operasyon/i.test(depo.name), isDepo = /depo/i.test(depo.name);
+      saveHandover([...(S.handover||[]), isOps ? {roleId:depo.id, statusName:"İncelemeye gönderildi", endsSla:false, targetHours:12}
+        : {roleId:depo.id, statusName: isDepo ? "Depoda · gönderim bekleniyor" : depo.name + " · devredildi", endsSla:true, targetHours:12,
+          hours: isDepo ? {start:(S.sla.hours && S.sla.hours.start) || "08:00", end:"16:30", days:[1,2,3,4,5]} : clone(S.sla.hours)}]); break; }
     case "ho-del": { if(!isAdmin()) return; const l = (S.handover||[]).slice(); l.splice(+el.dataset.i, 1); saveHandover(l); break; }
     case "rl-add": { if(!isAdmin()) return; const nid = "r" + Math.random().toString(36).slice(2, 9);
       saveRoles([...rolesList(), {id:nid, name:"Yeni rol", base:"agent"}]);
@@ -3193,6 +3250,17 @@ document.addEventListener("click", async e => {
       dlg = {kind:"confirm", title:`“${r.name}” rolü silinsin mi?`, text:"Rolde kullanıcı yok; rol listeden kaldırılır.", ok:"Rolü sil", danger:true, run:() => saveRoles(rolesList().filter(x => x.id !== id))};
       renderDialog(); break; }
     case "me-menu": openMeMenu(el); break;
+    case "start": { if(!t) return; el.disabled = true;
+      try{ const r = await api("POST", `/tickets/${t.id}/start`, {}); putTicket(r.ticket); toast(`${t.key}: ${statusName(r.ticket.status)}`); }
+      catch(e){ el.disabled = false; apiFail(e); } break; }
+    case "ask-open": if(t){ dlg = {kind:"ask", ticketId:t.id, text:"", error:""}; renderDialog(); } break;
+    case "ask-send": {
+      const txt = ($("#ask-text")?.value || "").trim(); dlg.text = txt;
+      if(!txt){ dlg.error = "Talep sahibine sorunu yazmalısın."; renderDialog(); return; }
+      el.disabled = true;
+      try{ const r = await api("POST", `/tickets/${dlg.ticketId}/ask`, {text:txt}); dlg = null; renderDialog(); putTicket(r.ticket); toast("Soru talep sahibine gönderildi; SLA saati durdu."); }
+      catch(e){ el.disabled = false; dlg.error = e.message; renderDialog(); } break; }
+    case "complete": { if(!t) return; const d0 = S.wf.statuses.find(x => x.category === "done"); if(d0) startMove(t, d0.id); break; }
     case "refresh": manualRefresh(); break;
     case "reopen": if(t){ dlg = {kind:"reopen", ticketId:t.id, text:"", error:""}; renderDialog(); } break;
     case "ro-send": {
@@ -3431,6 +3499,7 @@ document.addEventListener("change", e => {
     if(!isAdmin()) return;
     const l = clone(S.handover || []), r = l[+el.dataset.i], f = el.dataset.f; if(!r) return;
     if(f === "roleId"){ if(l.some((x,j) => j !== +el.dataset.i && x.roleId === el.value)){ el.value = r.roleId; return toast("Bu rol için zaten bir kural var.", true); } r.roleId = el.value; }
+    else if(f === "endsSla"){ r.endsSla = el.checked; if(el.checked && !(r.targetHours > 0)) r.targetHours = 12; }
     else if(f === "statusName"){ const v = el.value.trim(); if(!v){ el.value = r.statusName; return; } r.statusName = v.slice(0, 60); }
     else if(f === "h-start" || f === "h-end" || f === "h-day"){
       const h = clone(r.hours || S.sla.hours);
@@ -3496,6 +3565,7 @@ document.addEventListener("change", e => {
       if(hm(nh.start) >= hm(nh.end)){ el.value = cfg.hours[k]; return toast("Mesai bitişi başlangıçtan sonra olmalı.", true); }
       cfg.hours[k] = el.value;
     }
+    else if(a === "sla-rfrom"){ cfg.resolveFrom = el.value === "created" ? "created" : "start"; }
     else if(a === "sla-cov247"){ cfg.coverage = el.checked ? null : clone(DEFAULT_COVERAGE); }
     else if(a === "sla-cv"){
       const c = cfg.coverage ? {schedule: clone(schedOf(cfg.coverage))} : clone(DEFAULT_COVERAGE), d = el.dataset.d, f = el.dataset.f;
