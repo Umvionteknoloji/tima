@@ -720,7 +720,7 @@ td.t{font-weight:500;max-width:420px}
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.4";
+const APP_VERSION = "1.2.5";
 /* ---------------- API ---------------- */
 // Arka uç adresi. Test için localStorage'da "tima-api" anahtarıyla değiştirilebilir.
 const API_BASE = (localStorage.getItem("tima-api") || "https://tima-api.serdox.workers.dev/api").replace(/\/$/, "");
@@ -1901,7 +1901,9 @@ function renderDashboard(){
   const {from, to} = periodRange(S.dperiod);
   const all = Object.values(S.tickets).filter(inPool);
   const live = all.filter(t => !blocked(t));
-  const open = live.filter(t => cat(t.status) !== "done");
+  // destek tarafında açık olanlar: devredilen (ör. depoya) çağrılar destek için tamamlanmış sayılır
+  const handed = live.filter(t => cat(t.status) !== "done" && t.handover && !t.handover.doneAt);
+  const open = live.filter(t => cat(t.status) !== "done" && !t.handover);
   const unassigned = open.filter(t => !t.assignee);
   const waitingUser = open.filter(t => pauseIds().has(t.status));
   const pendingAp = all.filter(pendingAppr);
@@ -1972,7 +1974,7 @@ function renderDashboard(){
       ${pools.length > 1 ? `<div class="chips">${chip("dpool","all",S.dpool,"Tüm havuzlar")}${pools.map(pk => chip("dpool", pk, S.dpool, POOLS[pk].label)).join("")}</div>` : ""}</div>
 
     <div class="sla-grid dash-kpis">
-      ${kpi("Açık çağrı", open.length, `${unassigned.length} atanmamış · ${waitingUser.length} kullanıcı bekliyor`, "", "inbox")}
+      ${kpi("Açık çağrı", open.length, `${unassigned.length} atanmamış · ${waitingUser.length} kullanıcı bekliyor${handed.length ? ` · ayrıca ${handed.length} devredildi` : ""}`, "", "inbox")}
       ${kpi("SLA'sı aşılan açık çağrı", breached.length, breached.length ? "Hemen ilgilenilmeli" : "Aşım yok", breached.length ? "bad" : "ok", "list")}
       ${kpi("Onay bekleyen", pendingAp.length, "Destek ekibine henüz düşmedi", "", isApprover() ? "approvals" : null)}
       ${kpi(`${DPERIODS[S.dperiod]} açılan`, created.length, `${resolved.length} çözüldü`)}
