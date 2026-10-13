@@ -101,6 +101,7 @@ button{cursor:pointer}
 .contact a:hover{text-decoration:underline}
 .ho-h{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .ho-d{display:flex;gap:8px;flex-wrap:wrap;font-size:12.5px}
+.ro-val{display:inline-flex;align-items:center;gap:8px}
 .aslist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:260px;overflow:auto}
 .asrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
 .asrow:first-child{border-top:0}
@@ -719,6 +720,7 @@ td.t{font-weight:500;max-width:420px}
 (() => {
 "use strict";
 
+const APP_VERSION = "1.2.4";
 /* ---------------- API ---------------- */
 // Arka uç adresi. Test için localStorage'da "tima-api" anahtarıyla değiştirilebilir.
 const API_BASE = (localStorage.getItem("tima-api") || "https://tima-api.serdox.workers.dev/api").replace(/\/$/, "");
@@ -2487,7 +2489,8 @@ function renderDrawer(){
         <dt>Kategori</dt><dd>${staff ? `<select class="sel" data-act="f-category" data-id="${t.id}" aria-label="Kategori" ${fro}>
           <option value="">Kategorisiz</option>${S.cats.filter(c => c.active !== false || c.id === t.category).map(c => `<option value="${esc(c.id)}" ${c.id===t.category?"selected":""}>${esc(c.name)}${c.active === false ? " (pasif)" : ""}</option>`).join("")}
           ${t.category && !S.cats.some(c => c.id === t.category) ? `<option value="${esc(t.category)}" selected>Silinmiş kategori</option>` : ""}</select>` : `<b style="font-weight:600">${esc(catName(t.category))}</b>`}</dd>
-        <dt>${staff ? "Atanan" : "Destek sorumlusu"}</dt><dd><button class="fbtn" data-act="pick-assignee" data-id="${t.id}" ${fro}>${avatar(t.assignee,22)}${esc(t.assignee || staff ? personName(t.assignee) : "Henüz üstlenilmedi")}</button>${staff && t.assignee && (() => { const h = (t.history||[]).filter(x => x.field === "assignee").pop(); return h && h.by === "n:TIMA otomatik atama" && h.to === t.assignee; })() ? `<span class="autotag" title="Talep tipi kuralına göre sırayla atandı">otomatik atandı</span>` : ""}
+        <dt>${staff ? "Atanan" : "Destek sorumlusu"}</dt><dd>${staff ? `<button class="fbtn" data-act="pick-assignee" data-id="${t.id}" ${fro}>${avatar(t.assignee,22)}${esc(personName(t.assignee))}</button>`
+          : `<span class="ro-val">${avatar(t.assignee,22)}${esc(t.assignee ? personName(t.assignee) : "Henüz üstlenilmedi")}</span>`}${staff && t.assignee && (() => { const h = (t.history||[]).filter(x => x.field === "assignee").pop(); return h && h.by === "n:TIMA otomatik atama" && h.to === t.assignee; })() ? `<span class="autotag" title="Talep tipi kuralına göre sırayla atandı">otomatik atandı</span>` : ""}
           ${!t.assignee && !S.readOnly && staff ? `<button class="btn sm ghost" data-act="assign-me" data-id="${t.id}">Bana ata</button>` : ""}</dd>
         <dt>Öncelik</dt><dd><select class="sel" data-act="f-priority" data-id="${t.id}" aria-label="Öncelik" ${fro}>${PRIS.map(p => `<option value="${p.id}" ${p.id===t.priority?"selected":""}>${p.sym}  ${p.label}</option>`).join("")}</select></dd>
         ${staff && canProjects() ? `<dt>Proje</dt><dd class="projbox">${(() => {
@@ -3726,6 +3729,7 @@ function openMeMenu(anchor){
       ${firms.length > 1 ? `<div class="ms">Firmalarım</div>${firms.map(f => `<button class="opt" role="menuitem" data-act="switch-tenant" data-v="${esc(f.slug)}">${esc(f.name)}<span class="vis" style="font-size:12px">/${esc(f.slug)}</span>${f.slug === SLUG ? `<span class="cur">✓</span>` : ""}</button>`).join("")}<div style="border-top:1px solid var(--line);margin:4px 0"></div>` : ""}
       <button class="opt" role="menuitem" data-act="pw-change">Parolamı değiştir</button>
       <button class="opt" role="menuitem" data-act="logout">Çıkış yap</button>
+      <div class="hintline" style="padding:8px 10px 4px;border-top:1px solid var(--line);margin-top:4px">TIMA ${APP_VERSION}</div>
     </div>`;
 }
 async function switchTenant(slug){
