@@ -106,6 +106,34 @@ button{cursor:pointer}
 .adm-mv{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);width:100%}
 .big-start{font-size:15px;padding:9px 18px}
 .pre-title{margin:4px 0 6px;font-size:20px;line-height:1.3}
+.u-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 12px}
+.u-tools .inp{max-width:340px;padding:7px 11px;font-size:14px}
+.u-tools .chips{gap:4px}
+.u-tools .chipbtn{padding:3px 9px;font-size:12.5px}
+.ulist{display:flex;flex-direction:column;gap:8px}
+.ugroup{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.ug-h{display:flex;align-items:center;gap:8px;width:100%;border:0;background:var(--surface-2);padding:7px 12px;font:inherit;text-align:left;cursor:pointer}
+.ug-h .role{font-size:12px;padding:2px 8px}
+.ug-c{font-size:12.5px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.ug-car{display:inline-block;transition:transform .15s;color:var(--muted);font-size:12px;transform:rotate(90deg)}
+.ugroup.closed .ug-car{transform:none}
+.ugroup.closed .ug-b{display:none}
+.urow{display:grid;grid-template-columns:26px minmax(0,2.2fr) minmax(0,1.3fr) 76px auto;gap:12px;align-items:center;padding:6px 12px;border-top:1px solid var(--line);font-size:13.5px;min-height:42px}
+.urow:hover{background:var(--surface-2)}
+.urow.off{opacity:.55}
+.u-main{min-width:0}
+.u-n{font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+.u-s{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.u-scope{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.u-stat{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.u-acts{display:flex;gap:2px;align-items:center;justify-content:flex-end}
+.u-acts .btn{padding:3px 8px;font-size:12.5px}
+.utag{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.utag.sh{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.utag.off{background:var(--danger-soft);color:var(--danger);border-color:transparent}
+.utag.pw{background:var(--prog-soft,#F8ECD0);color:var(--prog);border-color:transparent}
+.utag.me{background:transparent}
+@media (max-width:760px){.urow{grid-template-columns:26px minmax(0,1fr) auto}.u-scope,.u-stat{display:none}}
 .aslist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:260px;overflow:auto}
 .asrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
 .asrow:first-child{border-top:0}
@@ -724,7 +752,7 @@ td.t{font-weight:500;max-width:420px}
 (() => {
 "use strict";
 
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.3.2";
 /* ---------------- API ---------------- */
 // Arka uç adresi. Test için localStorage'da "tima-api" anahtarıyla değiştirilebilir.
 const API_BASE = (localStorage.getItem("tima-api") || "https://tima-api.serdox.workers.dev/api").replace(/\/$/, "");
@@ -2110,44 +2138,8 @@ function renderAdmin(){
     if(t.assignee) assigned[t.assignee] = (assigned[t.assignee]||0) + 1;
     if(t.reporter) reported[t.reporter] = (reported[t.reporter]||0) + 1;
   });
-  const active = accts.filter(u => u.active).length;
-  const byRole = r => accts.filter(u => normRole(u.role) === r && u.active).length;
   const ro = S.readOnly ? "disabled" : "";
-  const rows = accts.map(u => {
-    const ref = "a:" + u.id, self = S.session && S.session.id === u.id;
-    return `<tr class="${u.active ? "" : "inactive"}">
-      <td><span style="display:inline-flex;gap:10px;align-items:center">${avatar(ref,30)}<span><b style="font-weight:600">${esc(u.name)}</b>${u.shared ? `<span class="sharedtag" title="Birden fazla firmada aynı kullanıcı adı ve parolayla çalışıyor">Ortak hesap</span>` : ""}${self ? ` <span class="uname">(sen)</span>` : ""}<br><span class="uname">${esc(u.username)}${u.email ? " · " + esc(u.email) : ` · <span style="color:var(--danger)">e-posta yok</span>`}${u.hasPassword === false ? ` · <span style="color:var(--prog)">parola belirlenmedi</span>` : ""}</span></span></span></td>
-      <td><span class="role ${normRole(u.role)}" title="${esc(BASE_LABEL[normRole(u.role)])}">${esc(roleLabel(u))}</span></td>
-      <td class="who" style="font-size:13.5px">${normRole(u.role) === "requester" ? `${esc(GROUPS[userGroup(u)].label)}${u.location ? `<small>${esc(u.location)}</small>` : ""}<small>Onaylayıcı: ${esc(personName(approverFor(u)))}${validApprover(u.approver) ? "" : " (varsayılan)"}</small>`
-        : normRole(u.role) === "agent" ? `<span style="display:inline-flex;gap:4px;flex-wrap:wrap">${agentPools(u).map(poolTag).join("")}</span>` : `<span class="vis">Tüm havuzlar</span>`}</td>
-      <td><span class="state ${u.active ? "" : "off"}">${u.active ? "Aktif" : "Devre dışı"}</span></td>
-      <td style="font-variant-numeric:tabular-nums">${reported[ref]||0}</td>
-      <td style="font-variant-numeric:tabular-nums">${normRole(u.role) === "requester" ? "—" : (assigned[ref]||0)}</td>
-      <td style="color:var(--muted)">${u.builtin ? "Sistem hesabı" : ago(u.createdAt)}</td>
-      <td class="acts"><div class="row-acts">${u.builtin ? `<span class="hintline">Değiştirilemez</span>` : `
-        ${u.email && !self ? `<button class="btn sm ghost" data-act="u-invite" data-id="${u.id}" ${ro} title="${u.hasPassword ? "Parola sıfırlama bağlantısı gönder" : "Parola belirleme bağlantısını yeniden gönder"}">${u.hasPassword ? "Parola sıfırla" : "Daveti gönder"}</button>` : ""}
-        <button class="btn sm ghost" data-act="u-edit" data-id="${u.id}" ${ro}>Düzenle</button>
-        <button class="btn sm ghost" data-act="u-toggle" data-id="${u.id}" ${self||ro?"disabled":""}>${u.active ? "Devre dışı bırak" : "Etkinleştir"}</button>
-        <button class="btn sm ghost danger" data-act="u-del" data-id="${u.id}" ${self||ro?"disabled":""}>Sil</button>`}</div></td>
-    </tr>`;
-  }).join("");
-  return `<div class="adm"><section class="panel">
-    <div class="adm-h"><div><h2>Kullanıcılar</h2><p class="sub" style="margin:4px 0 0">TIMA'ya giriş yapabilecek kişileri buradan ekle. Destek ekibini <b>Destek personeli</b>, talep açacak çalışanları <b>Talep sahibi</b> rolüne ata.</p></div>
-      <span class="spacer"></span>
-      <div class="xl-acts">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <button class="btn" data-act="u-export" title="Tüm kullanıcıları şablonla aynı sütunlarda Excel dosyası olarak indir">Excel'e aktar</button>
-          <button class="btn" data-act="u-import" ${ro}>Excel'den içe aktar</button>
-          <button class="btn primary" data-act="u-add" ${ro}>+ Kullanıcı ekle</button>
-        </div>
-        <a class="hintline" href="/TIMA_kullanici_aktarim_sablonu.xlsx" download>Örnek şablonu indir (.xlsx)</a>
-      </div></div>
-    <div class="adm-stats"><span><b>${accts.length}</b>hesap</span><span><b>${active}</b>aktif</span><span><b>${byRole("admin")}</b>yönetici</span><span><b>${byRole("agent")}</b>destek personeli</span><span><b>${byRole("requester")}</b>talep sahibi</span></div>
-    <div class="tablewrap" style="margin-top:10px"><table>
-      <thead><tr><th>Kullanıcı</th><th>Rol</th><th>Grup / havuz</th><th>Durum</th><th>Açtığı</th><th>Üstlendiği</th><th>Eklendi</th><th class="acts"><span class="sr">İşlemler</span></th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
-    ${accts.length === 1 ? `<p class="sub" style="margin:14px 0 0">Henüz ekip üyesi yok. İlk kullanıcıyı ekle; giriş bilgilerini kendisiyle paylaş.</p>` : ""}
-  </section>
+  return `<div class="adm"><section class="panel">${renderUsersPanel(accts, assigned, reported, ro)}</section>
   ${renderRolesAdmin()}
   ${renderAutoAssignAdmin()}
   ${renderHandoverAdmin()}
@@ -2159,6 +2151,59 @@ function renderAdmin(){
   </div>`;
 }
 
+// Kullanıcılar: rollere göre gruplanmış, tek satırlık sade liste + arama
+const BASE_ORDER = {admin:0, agent:1, project:2, requester:3};
+function userRowQ(u){ return [u.name, u.username, u.email, u.location, roleLabel(u)].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR"); }
+function renderUsersPanel(accts, assigned, reported, ro){
+  const q = (S.uq || "").trim().toLocaleLowerCase("tr-TR"), fr = S.urole || "all";
+  const roles = rolesList().slice().sort((a,b) => (BASE_ORDER[a.base] - BASE_ORDER[b.base]) || (a.builtin === b.builtin ? 0 : a.builtin ? -1 : 1) || a.name.localeCompare(b.name, "tr"));
+  const groups = roles.map(r => ({r, users: accts.filter(u => (roleOf(u) || {}).id === r.id).sort((a,b) => (b.active === false ? -1 : 0) - (a.active === false ? -1 : 0) || a.name.localeCompare(b.name, "tr"))})).filter(g => g.users.length);
+  const active = accts.filter(u => u.active).length;
+  const chip = (v, label, n) => `<button class="chipbtn" data-act="u-rf" data-v="${esc(v)}" aria-pressed="${fr === v}">${esc(label)}<span class="n">${n}</span></button>`;
+  const row = u => {
+    const ref = "a:" + u.id, self = S.session && S.session.id === u.id, base = normRole(u.role);
+    const scope = base === "requester" ? `${esc(GROUPS[userGroup(u)].label.replace(" kullanıcısı",""))}${u.location ? ` · ${esc(u.location)}` : ""}`
+      : base === "agent" ? agentPools(u).map(p => POOLS[p].label).join(" · ") : base === "project" ? "Projeler" : "Tümü";
+    const tags = `${u.shared ? `<span class="utag sh" title="Birden fazla firmada aynı hesapla çalışıyor">ortak</span>` : ""}${u.active === false ? `<span class="utag off">pasif</span>` : ""}${u.hasPassword === false ? `<span class="utag pw" title="Parolasını henüz belirlemedi">davet bekliyor</span>` : ""}${self ? `<span class="utag me">sen</span>` : ""}`;
+    const stats = base === "requester" ? `<span title="Açtığı talep">${reported[ref] || 0} talep</span>` : `<span title="Üzerine atanmış çağrı">${assigned[ref] || 0} çağrı</span>`;
+    return `<div class="urow ${u.active === false ? "off" : ""}" data-q="${esc(userRowQ(u))}" ${q && !userRowQ(u).includes(q) ? "hidden" : ""}>
+      ${avatar(ref, 26)}
+      <div class="u-main"><div class="u-n">${esc(u.name)}${tags}</div><div class="u-s">${esc(u.username)}${u.email ? ` · ${esc(u.email)}` : ` · <span style="color:var(--danger)">e-posta yok</span>`}</div></div>
+      <div class="u-scope" title="${base === "requester" ? "Onaylayıcı: " + esc(personName(approverFor(u))) : ""}">${scope}</div>
+      <div class="u-stat">${stats}</div>
+      <div class="u-acts"><button class="btn sm ghost" data-act="u-edit" data-id="${u.id}" ${ro}>Düzenle</button><button class="icon-btn" data-act="u-more" data-id="${u.id}" aria-label="Diğer işlemler" title="Diğer işlemler" ${ro}>⋯</button></div>
+    </div>`;
+  };
+  const shown = groups.filter(g => fr === "all" || g.r.id === fr);
+  return `<div class="adm-h"><div><h2>Kullanıcılar</h2><p class="sub" style="margin:4px 0 0">${accts.length} hesap · ${active} aktif · ${groups.length} rol</p></div>
+      <span class="spacer"></span>
+      <div class="xl-acts"><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn sm" data-act="u-export" title="Tüm kullanıcıları Excel olarak indir">Excel'e aktar</button>
+        <button class="btn sm" data-act="u-import" ${ro}>Excel'den içe aktar</button>
+        <button class="btn sm primary" data-act="u-add" ${ro}>+ Kullanıcı ekle</button></div>
+        <a class="hintline" href="/TIMA_kullanici_aktarim_sablonu.xlsx" download>Örnek şablonu indir (.xlsx)</a></div></div>
+    <div class="u-tools"><input class="inp" id="u-q" placeholder="Ad, kullanıcı adı, e-posta ya da mağaza ara" value="${esc(S.uq || "")}" autocomplete="off">
+      <div class="chips">${chip("all", "Tümü", accts.length)}${groups.map(g => chip(g.r.id, g.r.name, g.users.length)).join("")}</div></div>
+    <div class="ulist">${shown.map(g => {
+      const closed = !q && (S.ugClosed ? S.ugClosed[g.r.id] : g.users.length > 12 && fr === "all");
+      return `<div class="ugroup ${closed ? "closed" : ""}" data-g="${esc(g.r.id)}">
+        <button class="ug-h" data-act="u-gt" data-v="${esc(g.r.id)}" aria-expanded="${!closed}"><span class="ug-car">▸</span><span class="role ${g.r.base}">${esc(g.r.name)}</span><span class="ug-c">${g.users.length}</span><span class="spacer"></span><span class="hintline">${esc(BASE_LABEL[g.r.base])}</span></button>
+        <div class="ug-b">${g.users.map(row).join("")}</div></div>`;
+    }).join("")}</div>
+    <p class="hintline u-none" ${q && !accts.some(u => userRowQ(u).includes(q)) ? "" : "hidden"} style="margin:10px 0 0">Aramayla eşleşen kullanıcı yok.</p>`;
+}
+function openUserMenu(anchor, id){
+  const u = S.users[id]; if(!u) return;
+  const self = S.session && S.session.id === u.id, r = anchor.getBoundingClientRect();
+  $("#poplayer").innerHTML = `<div class="scrim" data-act="pick-close" style="background:transparent;z-index:59;animation:none"></div>
+    <div class="pop menu" role="menu" style="right:${Math.max(8, window.innerWidth - r.right)}px;top:${r.bottom + 4}px;width:230px">
+      <div class="mh"><b>${esc(u.name)}</b>${esc(u.username)}</div>
+      ${u.email && !self ? `<button class="opt" role="menuitem" data-act="u-invite" data-id="${u.id}">${u.hasPassword ? "Parola sıfırlama bağlantısı gönder" : "Daveti yeniden gönder"}</button>` : ""}
+      ${self ? "" : `<button class="opt" role="menuitem" data-act="u-toggle" data-id="${u.id}">${u.active ? "Devre dışı bırak" : "Etkinleştir"}</button>
+      <button class="opt" role="menuitem" data-act="u-del" data-id="${u.id}" style="color:var(--danger)">Sil</button>`}
+      ${self ? `<p class="hintline" style="padding:6px 10px;margin:0">Kendi hesabını devre dışı bırakamaz ya da silemezsin.</p>` : ""}
+    </div>`;
+}
 function renderRolesAdmin(){
   const ro = S.readOnly ? "disabled" : "";
   const counts = {}; allAccounts().forEach(u => { const r = roleOf(u); if(r) counts[r.id] = (counts[r.id] || 0) + 1; });
@@ -3240,9 +3285,13 @@ document.addEventListener("click", async e => {
     case "u-gen": { const pw = genPassword(); dlg.showPw = true;
       ["#u-pass","#u-pass2"].forEach(sel => { const i = $(sel); if(i){ i.value = pw; i.type = "text"; } }); captureDialog();
       toast("Parola üretildi. Kaydetmeden önce not al; daha sonra görüntülenemez."); break; }
-    case "u-invite": { const u = S.users[id]; if(!u) return;
+    case "u-invite": { $("#poplayer").innerHTML = ""; const u = S.users[id]; if(!u) return;
       api("POST", `/users/${id}/invite`, {}).then(() => toast(`${u.email} adresine bağlantı gönderildi`)).catch(apiFail); break; }
     case "u-import": openImport(); break;
+    case "u-more": openUserMenu(el, id); break;
+    case "u-rf": S.urole = el.dataset.v; renderAll(); break;
+    case "u-gt": { S.ugClosed = S.ugClosed || {}; const g = el.closest(".ugroup"); const closed = !g.classList.contains("closed");
+      S.ugClosed[el.dataset.v] = closed; g.classList.toggle("closed", closed); el.setAttribute("aria-expanded", String(!closed)); break; }
     case "ho-add": { if(!isAdmin()) return; const used = new Set((S.handover||[]).map(r => r.roleId));
       const cand = rolesList().filter(r => r.base !== "requester" && !used.has(r.id));
       const depo = cand.find(r => /depo/i.test(r.name)) || cand.find(r => /operasyon/i.test(r.name)) || cand.find(r => !r.builtin) || cand[0];
@@ -3324,11 +3373,14 @@ document.addEventListener("click", async e => {
       break;
     }
     case "u-toggle": {
+      $("#poplayer").innerHTML = "";
       const u = S.users[id]; if(!u || !isAdmin()) return;
-      api("PATCH", `/users/${u.id}`, {active: !u.active}).then(r => { S.users[r.user.id] = r.user; renderAll(); }).catch(apiFail);
-      toast(n.active ? `${n.name} etkinleştirildi` : `${n.name} artık giriş yapamaz`); break;
+      const on = !u.active;
+      api("PATCH", `/users/${u.id}`, {active: on}).then(r => { S.users[r.user.id] = r.user; renderAll(); toast(on ? `${u.name} etkinleştirildi` : `${u.name} artık giriş yapamaz`); }).catch(apiFail);
+      break;
     }
     case "u-del": {
+      $("#poplayer").innerHTML = "";
       const u = S.users[id]; if(!u || !isAdmin()) return;
       const cnt = Object.values(S.tickets).filter(t => t.assignee === "a:"+id).length;
       dlg = {kind:"confirm", title:`${u.name} silinsin mi?`, text:`Hesap kalıcı olarak silinir.${cnt ? ` Atandığı ${cnt} talepte “Silinmiş kullanıcı” görünür.` : ""} Geçmişi korumak istiyorsan bunun yerine devre dışı bırak.`, ok:"Kullanıcıyı sil", danger:true,
@@ -3862,6 +3914,13 @@ async function runImport(skipErrors){
     S.syncSince = 0; syncNow();
   }catch(e){ dlg.busy = false; dlg.error = e.message; renderDialog(); }
 }
+document.addEventListener("input", e => {
+  if(e.target.id !== "u-q") return;
+  S.uq = e.target.value; const q = S.uq.trim().toLocaleLowerCase("tr-TR"); let any = false;
+  document.querySelectorAll(".ulist .urow").forEach(r => { const ok = !q || r.dataset.q.includes(q); r.hidden = !ok; if(ok) any = true; });
+  document.querySelectorAll(".ulist .ugroup").forEach(g => { const vis = [...g.querySelectorAll(".urow")].some(r => !r.hidden); g.hidden = !vis; if(q) g.classList.remove("closed"); });
+  const none = document.querySelector(".u-none"); if(none) none.hidden = !q || any;
+});
 document.addEventListener("change", e => { if(e.target.id === "imp-file" && e.target.files[0] && dlg && dlg.kind === "import") readImportFile(e.target.files[0]); });
 
 /* ---------------- session & sync ---------------- */
